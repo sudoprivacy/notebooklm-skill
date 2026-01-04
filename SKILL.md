@@ -1,6 +1,6 @@
 ---
 name: notebooklm
-description: "Query Google NotebookLM notebooks and add URL sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to add website/YouTube URLs as sources, (3) mentions NotebookLM or shares notebook URLs, (4) asks to check/search their documentation"
+description: "Query Google NotebookLM notebooks, list notebooks, and add URL sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) mentions NotebookLM or shares notebook URLs, (5) asks to check/search their documentation"
 ---
 
 # NotebookLM Research Assistant Skill
@@ -11,9 +11,10 @@ Interact with Google NotebookLM to query documentation with Gemini's source-grou
 
 Trigger when user:
 - Wants to query notebooks for answers
+- Wants to list/see their NotebookLM notebooks
 - Wants to add website/YouTube URLs as sources to a notebook
 - Mentions NotebookLM or shares notebook URL
-- Uses phrases like "ask my NotebookLM", "add this URL to notebook", "query my docs"
+- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "query my docs"
 
 ## ⚠️ CRITICAL: Add Command - Smart Discovery
 
@@ -163,6 +164,20 @@ python scripts/run.py notebook_manager.py stats
 ```bash
 python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--notebook-url URL] [--show-browser]
 ```
+
+### List Notebooks from Web (`list_notebooks.py`)
+```bash
+# List all notebooks from NotebookLM (fetches from web, not local library)
+python scripts/run.py list_notebooks.py
+
+# Output as JSON
+python scripts/run.py list_notebooks.py --json
+
+# Debug mode (saves screenshot and HTML)
+python scripts/run.py list_notebooks.py --debug --show-browser
+```
+
+Returns: notebook ID, name, URL, last modified date, source count.
 
 ### Add URL Source (`add_source.py`)
 ```bash
