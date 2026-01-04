@@ -1,6 +1,6 @@
 ---
 name: notebooklm
-description: Use this skill to query your Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Browser automation, library management, persistent auth. Drastically reduced hallucinations through document-only responses.
+description: "Query Google NotebookLM notebooks and add URL sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to add website/YouTube URLs as sources, (3) mentions NotebookLM or shares notebook URLs, (4) asks to check/search their documentation"
 ---
 
 # NotebookLM Research Assistant Skill
@@ -10,11 +10,10 @@ Interact with Google NotebookLM to query documentation with Gemini's source-grou
 ## When to Use This Skill
 
 Trigger when user:
-- Mentions NotebookLM explicitly
-- Shares NotebookLM URL (`https://notebooklm.google.com/notebook/...`)
-- Asks to query their notebooks/documentation
-- Wants to add documentation to NotebookLM library
-- Uses phrases like "ask my NotebookLM", "check my docs", "query my notebook"
+- Wants to query notebooks for answers
+- Wants to add website/YouTube URLs as sources to a notebook
+- Mentions NotebookLM or shares notebook URL
+- Uses phrases like "ask my NotebookLM", "add this URL to notebook", "query my docs"
 
 ## ⚠️ CRITICAL: Add Command - Smart Discovery
 
