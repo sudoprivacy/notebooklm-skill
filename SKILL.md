@@ -165,6 +165,19 @@ python scripts/run.py notebook_manager.py stats
 python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--notebook-url URL] [--show-browser]
 ```
 
+### Add URL Source (`add_source.py`)
+```bash
+# Add website URL as source
+python scripts/run.py add_source.py --url "https://example.com/article" [--notebook-id ID] [--show-browser]
+
+# Add YouTube video as source
+python scripts/run.py add_source.py --url "https://youtube.com/watch?v=xxx" [--notebook-id ID] [--show-browser]
+```
+
+Supported URL types:
+- Website URLs (articles, documentation, etc.)
+- YouTube video URLs (transcript will be imported)
+
 ### Data Cleanup (`cleanup_manager.py`)
 ```bash
 python scripts/run.py cleanup_manager.py                    # Preview cleanup
@@ -252,7 +265,7 @@ Synthesize and respond to user
 
 - No session persistence (each question = new browser)
 - Rate limits on free Google accounts (50 queries/day)
-- Manual upload required (user must add docs to NotebookLM)
+- File upload requires manual action (use add_source.py for URLs)
 - Browser overhead (few seconds per question)
 
 ## Resources (Skill Structure)
