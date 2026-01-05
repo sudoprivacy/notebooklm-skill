@@ -72,7 +72,26 @@ python scripts/run.py list_notebooks.py --debug --show-browser
 
 Returns: notebook ID, name, URL, last modified date, source count.
 
-### Step 4: Ask Questions
+### Step 4: Create / Delete Notebooks
+
+```bash
+# Create a new notebook with name
+python scripts/run.py create_notebook.py --name "My Research"
+
+# Create without name (will be "Untitled notebook")
+python scripts/run.py create_notebook.py
+
+# Delete notebook (preview first)
+python scripts/run.py delete_notebook.py --notebook-name "My Research"
+
+# Actually delete (requires --confirm)
+python scripts/run.py delete_notebook.py --notebook-name "My Research" --confirm
+
+# Delete by ID
+python scripts/run.py delete_notebook.py --notebook-id UUID --confirm
+```
+
+### Step 5: Ask Questions
 
 ```bash
 # Query by notebook name (fuzzy match - RECOMMENDED)
@@ -140,6 +159,20 @@ python scripts/run.py auth_manager.py clear    # Clear authentication
 python scripts/run.py list_notebooks.py              # List all notebooks
 python scripts/run.py list_notebooks.py --json       # JSON output
 python scripts/run.py list_notebooks.py --show-browser --debug  # Debug mode
+```
+
+### Create Notebook (`create_notebook.py`)
+```bash
+python scripts/run.py create_notebook.py --name "My Notebook"  # Create with name
+python scripts/run.py create_notebook.py                       # Create unnamed
+python scripts/run.py create_notebook.py --show-browser        # Debug mode
+```
+
+### Delete Notebook (`delete_notebook.py`)
+```bash
+python scripts/run.py delete_notebook.py --notebook-name NAME           # Preview
+python scripts/run.py delete_notebook.py --notebook-name NAME --confirm # Delete
+python scripts/run.py delete_notebook.py --notebook-id UUID --confirm   # By ID
 ```
 
 ### Question Interface (`ask_question.py`)
