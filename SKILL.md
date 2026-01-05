@@ -16,38 +16,17 @@ Trigger when user:
 - Mentions NotebookLM or shares notebook URL
 - Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "query my docs"
 
-## ⚠️ CRITICAL: Add Command - Smart Discovery
-
-When user wants to add a notebook without providing details:
-
-**SMART ADD (Recommended)**: Query the notebook first to discover its content:
-```bash
-# Step 1: Query the notebook about its content
-python scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
-
-# Step 2: Use the discovered information to add it
-python scripts/run.py notebook_manager.py add --url "[URL]" --name "[Based on content]" --description "[Based on content]" --topics "[Based on content]"
-```
-
-**MANUAL ADD**: If user provides all details:
-- `--url` - The NotebookLM URL
-- `--name` - A descriptive name
-- `--description` - What the notebook contains (REQUIRED!)
-- `--topics` - Comma-separated topics (REQUIRED!)
-
-NEVER guess or use generic descriptions! If details missing, use Smart Add to discover them.
-
 ## Critical: Always Use run.py Wrapper
 
 **NEVER call scripts directly. ALWAYS use `python scripts/run.py [script]`:**
 
 ```bash
-# ✅ CORRECT - Always use run.py:
+# CORRECT - Always use run.py:
 python scripts/run.py auth_manager.py status
-python scripts/run.py notebook_manager.py list
+python scripts/run.py list_notebooks.py
 python scripts/run.py ask_question.py --question "..."
 
-# ❌ WRONG - Never call directly:
+# WRONG - Never call directly:
 python scripts/auth_manager.py status  # Fails without venv!
 ```
 
@@ -78,52 +57,58 @@ python scripts/run.py auth_manager.py setup
 - User must manually log in to Google
 - Tell user: "A browser window will open for Google login"
 
-### Step 3: Manage Notebook Library
+### Step 3: List Notebooks
 
 ```bash
-# List all notebooks
-python scripts/run.py notebook_manager.py list
+# List all notebooks from NotebookLM (fetches from web)
+python scripts/run.py list_notebooks.py
 
-# BEFORE ADDING: Ask user for metadata if unknown!
-# "What does this notebook contain?"
-# "What topics should I tag it with?"
+# Output as JSON
+python scripts/run.py list_notebooks.py --json
 
-# Add notebook to library (ALL parameters are REQUIRED!)
-python scripts/run.py notebook_manager.py add \
-  --url "https://notebooklm.google.com/notebook/..." \
-  --name "Descriptive Name" \
-  --description "What this notebook contains" \  # REQUIRED - ASK USER IF UNKNOWN!
-  --topics "topic1,topic2,topic3"  # REQUIRED - ASK USER IF UNKNOWN!
-
-# Search notebooks by topic
-python scripts/run.py notebook_manager.py search --query "keyword"
-
-# Set active notebook
-python scripts/run.py notebook_manager.py activate --id notebook-id
-
-# Remove notebook
-python scripts/run.py notebook_manager.py remove --id notebook-id
+# Debug mode (saves screenshot and HTML)
+python scripts/run.py list_notebooks.py --debug --show-browser
 ```
 
-### Quick Workflow
-1. Check library: `python scripts/run.py notebook_manager.py list`
-2. Ask question: `python scripts/run.py ask_question.py --question "..." --notebook-id ID`
+Returns: notebook ID, name, URL, last modified date, source count.
 
 ### Step 4: Ask Questions
 
 ```bash
-# Basic query (uses active notebook if set)
-python scripts/run.py ask_question.py --question "Your question here"
+# Query by notebook name (fuzzy match - RECOMMENDED)
+python scripts/run.py ask_question.py --question "Your question" --notebook-name "my docs"
 
-# Query specific notebook
-python scripts/run.py ask_question.py --question "..." --notebook-id notebook-id
+# Query by notebook ID
+python scripts/run.py ask_question.py --question "..." --notebook-id UUID
 
 # Query with notebook URL directly
 python scripts/run.py ask_question.py --question "..." --notebook-url "https://..."
 
+# After first use, notebook is auto-remembered - just ask!
+python scripts/run.py ask_question.py --question "Follow-up question"
+
 # Show browser for debugging
 python scripts/run.py ask_question.py --question "..." --show-browser
 ```
+
+**Auto-remember feature:** After a successful query, the notebook is automatically saved. Subsequent queries without `--notebook-name/--notebook-id/--notebook-url` will use the last notebook.
+
+### Step 5: Add URL Sources
+
+```bash
+# Add website URL as source (by notebook name)
+python scripts/run.py add_source.py --url "https://example.com/article" --notebook-name "my docs"
+
+# Add YouTube video as source
+python scripts/run.py add_source.py --url "https://youtube.com/watch?v=xxx" --notebook-id UUID
+
+# Uses last notebook if not specified
+python scripts/run.py add_source.py --url "https://example.com"
+```
+
+Supported URL types:
+- Website URLs (articles, documentation, etc.)
+- YouTube video URLs (transcript will be imported)
 
 ## Follow-Up Mechanism (CRITICAL)
 
@@ -150,53 +135,29 @@ python scripts/run.py auth_manager.py reauth   # Re-authenticate (browser visibl
 python scripts/run.py auth_manager.py clear    # Clear authentication
 ```
 
-### Notebook Management (`notebook_manager.py`)
+### List Notebooks (`list_notebooks.py`)
 ```bash
-python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS
-python scripts/run.py notebook_manager.py list
-python scripts/run.py notebook_manager.py search --query QUERY
-python scripts/run.py notebook_manager.py activate --id ID
-python scripts/run.py notebook_manager.py remove --id ID
-python scripts/run.py notebook_manager.py stats
+python scripts/run.py list_notebooks.py              # List all notebooks
+python scripts/run.py list_notebooks.py --json       # JSON output
+python scripts/run.py list_notebooks.py --show-browser --debug  # Debug mode
 ```
 
 ### Question Interface (`ask_question.py`)
 ```bash
-python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--notebook-url URL] [--show-browser]
+python scripts/run.py ask_question.py --question "..." [--notebook-name NAME] [--notebook-id ID] [--notebook-url URL] [--show-browser]
 ```
 
-### List Notebooks from Web (`list_notebooks.py`)
-```bash
-# List all notebooks from NotebookLM (fetches from web, not local library)
-python scripts/run.py list_notebooks.py
-
-# Output as JSON
-python scripts/run.py list_notebooks.py --json
-
-# Debug mode (saves screenshot and HTML)
-python scripts/run.py list_notebooks.py --debug --show-browser
-```
-
-Returns: notebook ID, name, URL, last modified date, source count.
+Priority for notebook selection: `--notebook-url` > `--notebook-id` > `--notebook-name` > last used notebook
 
 ### Add URL Source (`add_source.py`)
 ```bash
-# Add website URL as source
-python scripts/run.py add_source.py --url "https://example.com/article" [--notebook-id ID] [--show-browser]
-
-# Add YouTube video as source
-python scripts/run.py add_source.py --url "https://youtube.com/watch?v=xxx" [--notebook-id ID] [--show-browser]
+python scripts/run.py add_source.py --url "..." [--notebook-name NAME] [--notebook-id ID] [--notebook-url URL] [--show-browser]
 ```
-
-Supported URL types:
-- Website URLs (articles, documentation, etc.)
-- YouTube video URLs (transcript will be imported)
 
 ### Data Cleanup (`cleanup_manager.py`)
 ```bash
 python scripts/run.py cleanup_manager.py                    # Preview cleanup
 python scripts/run.py cleanup_manager.py --confirm          # Execute cleanup
-python scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
 ```
 
 ## Environment Management
@@ -217,8 +178,8 @@ python -m patchright install chromium
 
 ## Data Storage
 
-All data stored in `~/.claude/skills/notebooklm/data/`:
-- `library.json` - Notebook metadata
+All data stored in `data/` directory:
+- `config.json` - Last used notebook (auto-managed)
 - `auth_info.json` - Authentication status
 - `browser_state/` - Browser cookies and session
 
@@ -240,19 +201,19 @@ DEFAULT_NOTEBOOK_ID=     # Default notebook
 
 ```
 User mentions NotebookLM
-    ↓
-Check auth → python scripts/run.py auth_manager.py status
-    ↓
-If not authenticated → python scripts/run.py auth_manager.py setup
-    ↓
-Check/Add notebook → python scripts/run.py notebook_manager.py list/add (with --description)
-    ↓
-Activate notebook → python scripts/run.py notebook_manager.py activate --id ID
-    ↓
-Ask question → python scripts/run.py ask_question.py --question "..."
-    ↓
-See "Is that ALL you need?" → Ask follow-ups until complete
-    ↓
+    |
+Check auth -> python scripts/run.py auth_manager.py status
+    |
+If not authenticated -> python scripts/run.py auth_manager.py setup
+    |
+List notebooks -> python scripts/run.py list_notebooks.py
+    |
+Ask question -> python scripts/run.py ask_question.py --question "..." --notebook-name "..."
+    |
+(notebook auto-remembered for follow-ups)
+    |
+See "Is that ALL you need?" -> Ask follow-ups until complete
+    |
 Synthesize and respond to user
 ```
 
@@ -263,17 +224,18 @@ Synthesize and respond to user
 | ModuleNotFoundError | Use `run.py` wrapper |
 | Authentication fails | Browser must be visible for setup! --show-browser |
 | Rate limit (50/day) | Wait or switch Google account |
-| Browser crashes | `python scripts/run.py cleanup_manager.py --preserve-library` |
-| Notebook not found | Check with `notebook_manager.py list` |
+| Browser crashes | `python scripts/run.py cleanup_manager.py` |
+| Notebook not found | Check with `list_notebooks.py`, use `--notebook-name` for fuzzy match |
 
 ## Best Practices
 
 1. **Always use run.py** - Handles environment automatically
 2. **Check auth first** - Before any operations
-3. **Follow-up questions** - Don't stop at first answer
-4. **Browser visible for auth** - Required for manual login
-5. **Include context** - Each question is independent
-6. **Synthesize answers** - Combine multiple responses
+3. **Use --notebook-name** - Fuzzy matching is convenient and fetches real data
+4. **Follow-up questions** - Don't stop at first answer, notebook is auto-remembered
+5. **Browser visible for auth** - Required for manual login
+6. **Include context** - Each question is independent
+7. **Synthesize answers** - Combine multiple responses
 
 ## Limitations
 
@@ -286,8 +248,8 @@ Synthesize and respond to user
 
 **Important directories and files:**
 
-- `scripts/` - All automation scripts (ask_question.py, notebook_manager.py, etc.)
-- `data/` - Local storage for authentication and notebook library
+- `scripts/` - All automation scripts (ask_question.py, list_notebooks.py, etc.)
+- `data/` - Local storage for authentication and config
 - `references/` - Extended documentation:
   - `api_reference.md` - Detailed API documentation for all scripts
   - `troubleshooting.md` - Common issues and solutions

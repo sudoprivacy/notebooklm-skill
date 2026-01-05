@@ -15,8 +15,9 @@ from patchright.sync_api import sync_playwright
 sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
-from notebook_manager import NotebookLibrary
+from notebook_config import get_last_notebook, set_last_notebook
 from browser_utils import BrowserFactory, StealthUtils
+from list_notebooks import list_notebooks
 
 
 # Selectors for adding sources
@@ -290,37 +291,70 @@ def add_url_source(notebook_url: str, source_url: str, headless: bool = True) ->
                 pass
 
 
+def find_notebook_by_name(name: str) -> dict | None:
+    """Find notebook by name (fuzzy match)"""
+    result = list_notebooks(headless=True)
+    if result["status"] != "success":
+        return None
+    for nb in result["notebooks"]:
+        if name.lower() in nb.get("name", "").lower():
+            return nb
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description='Add URL source to NotebookLM')
 
     parser.add_argument('--url', required=True, help='URL to add as source (website or YouTube)')
-    parser.add_argument('--notebook-url', help='NotebookLM notebook URL')
-    parser.add_argument('--notebook-id', help='Notebook ID from library')
+    parser.add_argument('--notebook-url', help='Full NotebookLM notebook URL')
+    parser.add_argument('--notebook-id', help='Notebook UUID')
+    parser.add_argument('--notebook-name', help='Notebook name (fuzzy match)')
     parser.add_argument('--show-browser', action='store_true', help='Show browser for debugging')
 
     args = parser.parse_args()
 
-    # Resolve notebook URL
+    # Resolve notebook URL (priority: url > id > name > last used)
     notebook_url = args.notebook_url
+    notebook_id = None
+    notebook_name = None
+
+    if notebook_url:
+        # Extract ID from URL
+        match = re.search(r'/notebook/([a-f0-9-]+)', notebook_url)
+        if match:
+            notebook_id = match.group(1)
 
     if not notebook_url and args.notebook_id:
-        library = NotebookLibrary()
-        notebook = library.get_notebook(args.notebook_id)
-        if notebook:
-            notebook_url = notebook['url']
+        notebook_id = args.notebook_id
+        notebook_url = f"https://notebooklm.google.com/notebook/{notebook_id}"
+
+    if not notebook_url and args.notebook_name:
+        print(f"🔍 Looking for notebook: {args.notebook_name}")
+        nb = find_notebook_by_name(args.notebook_name)
+        if nb:
+            notebook_url = nb["url"]
+            notebook_id = nb["id"]
+            notebook_name = nb.get("name", "")
+            print(f"📚 Found: {nb['name']}")
         else:
-            print(f"❌ Notebook '{args.notebook_id}' not found")
+            print(f"❌ No notebook found matching: {args.notebook_name}")
             return 1
 
     if not notebook_url:
-        library = NotebookLibrary()
-        active = library.get_active_notebook()
-        if active:
-            notebook_url = active['url']
-            print(f"📚 Using active notebook: {active['name']}")
+        last = get_last_notebook()
+        if last:
+            notebook_url = last["url"]
+            notebook_id = last["id"]
+            notebook_name = last.get("name", "")
+            print(f"📚 Using last notebook: {last.get('name') or last['id']}")
         else:
-            print("❌ No notebook specified. Use --notebook-url or --notebook-id")
-            print("   Or set an active notebook: notebook_manager.py activate --id ID")
+            print("❌ No notebook specified. Options:")
+            print("  --notebook-url URL     Full NotebookLM URL")
+            print("  --notebook-id UUID     Notebook UUID")
+            print("  --notebook-name NAME   Fuzzy match by name")
+            print("")
+            print("List available notebooks:")
+            print("  python scripts/run.py list_notebooks.py")
             return 1
 
     result = add_url_source(
@@ -330,6 +364,9 @@ def main():
     )
 
     if result["status"] == "success":
+        # Auto-save last used notebook
+        if notebook_id:
+            set_last_notebook(notebook_id, notebook_name or "")
         print(f"\n✅ Added {result.get('source_type', 'URL')} source: {result['source_url']}")
         if result.get("note"):
             print(f"   Note: {result['note']}")

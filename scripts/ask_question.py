@@ -21,9 +21,10 @@ from patchright.sync_api import sync_playwright
 sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
-from notebook_manager import NotebookLibrary
+from notebook_config import get_last_notebook, set_last_notebook
 from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
 from browser_utils import BrowserFactory, StealthUtils
+from list_notebooks import list_notebooks
 
 
 # Follow-up reminder (adapted from MCP server for stateless operation)
@@ -187,48 +188,75 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
                 pass
 
 
+def find_notebook_by_name(name: str) -> dict | None:
+    """Find notebook by name (fuzzy match)"""
+    result = list_notebooks(headless=True)
+    if result["status"] != "success":
+        return None
+    for nb in result["notebooks"]:
+        if name.lower() in nb.get("name", "").lower():
+            return nb
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description='Ask NotebookLM a question')
 
     parser.add_argument('--question', required=True, help='Question to ask')
-    parser.add_argument('--notebook-url', help='NotebookLM notebook URL')
-    parser.add_argument('--notebook-id', help='Notebook ID from library')
+    parser.add_argument('--notebook-url', help='Full NotebookLM notebook URL')
+    parser.add_argument('--notebook-id', help='Notebook UUID (or partial)')
+    parser.add_argument('--notebook-name', help='Notebook name (fuzzy match)')
     parser.add_argument('--show-browser', action='store_true', help='Show browser')
 
     args = parser.parse_args()
 
-    # Resolve notebook URL
+    # Resolve notebook URL (priority: url > id > name > last used)
     notebook_url = args.notebook_url
+    notebook_id = None
+    notebook_name = None
+
+    if notebook_url:
+        # Extract ID from URL
+        import re
+        match = re.search(r'/notebook/([a-f0-9-]+)', notebook_url)
+        if match:
+            notebook_id = match.group(1)
 
     if not notebook_url and args.notebook_id:
-        library = NotebookLibrary()
-        notebook = library.get_notebook(args.notebook_id)
-        if notebook:
-            notebook_url = notebook['url']
+        # Support both full UUID and partial
+        notebook_id = args.notebook_id
+        notebook_url = f"https://notebooklm.google.com/notebook/{notebook_id}"
+
+    if not notebook_url and args.notebook_name:
+        # Fuzzy match by name (requires fetching from web)
+        print(f"🔍 Looking for notebook: {args.notebook_name}")
+        nb = find_notebook_by_name(args.notebook_name)
+        if nb:
+            notebook_url = nb["url"]
+            notebook_id = nb["id"]
+            notebook_name = nb.get("name", "")
+            print(f"📚 Found: {nb['name']}")
         else:
-            print(f"❌ Notebook '{args.notebook_id}' not found")
+            print(f"❌ No notebook found matching: {args.notebook_name}")
             return 1
 
     if not notebook_url:
-        # Check for active notebook first
-        library = NotebookLibrary()
-        active = library.get_active_notebook()
-        if active:
-            notebook_url = active['url']
-            print(f"📚 Using active notebook: {active['name']}")
+        # Check for last used notebook
+        last = get_last_notebook()
+        if last:
+            notebook_url = last["url"]
+            notebook_id = last["id"]
+            notebook_name = last.get("name", "")
+            print(f"📚 Using last notebook: {last.get('name') or last['id']}")
         else:
             # Show available notebooks
-            notebooks = library.list_notebooks()
-            if notebooks:
-                print("\n📚 Available notebooks:")
-                for nb in notebooks:
-                    mark = " [ACTIVE]" if nb.get('id') == library.active_notebook_id else ""
-                    print(f"  {nb['id']}: {nb['name']}{mark}")
-                print("\nSpecify with --notebook-id or set active:")
-                print("python scripts/run.py notebook_manager.py activate --id ID")
-            else:
-                print("❌ No notebooks in library. Add one first:")
-                print("python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS")
+            print("❌ No notebook specified. Options:")
+            print("  --notebook-url URL     Full NotebookLM URL")
+            print("  --notebook-id UUID     Notebook UUID")
+            print("  --notebook-name NAME   Fuzzy match by name")
+            print("")
+            print("List available notebooks:")
+            print("  python scripts/run.py list_notebooks.py")
             return 1
 
     # Ask the question
@@ -239,6 +267,9 @@ def main():
     )
 
     if answer:
+        # Auto-save last used notebook
+        if notebook_id:
+            set_last_notebook(notebook_id, notebook_name or "")
         print("\n" + "=" * 60)
         print(f"Question: {args.question}")
         print("=" * 60)
