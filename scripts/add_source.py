@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Add URL source to NotebookLM notebook
-Supports websites and YouTube videos
+Add source to NotebookLM notebook
+Supports: websites, YouTube videos, and local files (PDF, TXT, etc.)
 """
 
 import argparse
@@ -291,6 +291,200 @@ def add_url_source(notebook_url: str, source_url: str, headless: bool = True) ->
                 pass
 
 
+def add_file_source(notebook_url: str, file_path: str, headless: bool = True) -> dict:
+    """
+    Upload a local file as source to a NotebookLM notebook
+
+    Args:
+        notebook_url: NotebookLM notebook URL
+        file_path: Path to local file (PDF, TXT, MD, etc.)
+        headless: Run browser in headless mode
+
+    Returns:
+        Dict with status and details
+    """
+    auth = AuthManager()
+
+    if not auth.is_authenticated():
+        return {"status": "error", "error": "Not authenticated. Run: python auth_manager.py setup"}
+
+    # Validate file exists
+    file_path = Path(file_path).resolve()
+    if not file_path.exists():
+        return {"status": "error", "error": f"File not found: {file_path}"}
+
+    file_name = file_path.name
+    print(f"📄 Uploading file: {file_name}")
+    print(f"📚 Notebook: {notebook_url}")
+
+    playwright = None
+    context = None
+
+    try:
+        playwright = sync_playwright().start()
+        context = BrowserFactory.launch_persistent_context(playwright, headless=headless)
+
+        page = context.new_page()
+        print("  🌐 Opening notebook...")
+        page.goto(notebook_url, wait_until="domcontentloaded")
+
+        # Wait for NotebookLM to load
+        page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=15000)
+        StealthUtils.random_delay(2000, 3000)
+
+        # Step 1: Click on Sources tab
+        print("  🔍 Clicking Sources tab...")
+        sources_tab_selectors = [
+            'button:has-text("Sources")',
+            '[role="tab"]:has-text("Sources")',
+            'div:has-text("Sources"):not(:has(*))',
+            '.tab:has-text("Sources")',
+        ]
+        find_and_click(page, sources_tab_selectors, "Sources tab", timeout=5000)
+        StealthUtils.random_delay(1000, 1500)
+
+        # Step 2: Click "Add source" or "Upload" button
+        print("  🔍 Looking for upload option...")
+
+        # First try to find and click Add source button
+        add_clicked = find_and_click(page, ADD_SOURCE_BUTTON_SELECTORS, "Add source button", timeout=5000)
+        if add_clicked:
+            StealthUtils.random_delay(1000, 2000)
+
+        # Now look for "Upload files" option or file input
+        upload_selectors = [
+            'button:has-text("Upload files")',
+            'button:has-text("Upload")',
+            ':has-text("Upload files"):not(:has(*))',
+            '[aria-label*="upload" i]',
+            'button:has(mat-icon:has-text("upload"))',
+        ]
+
+        upload_clicked = find_and_click(page, upload_selectors, "Upload files", timeout=5000)
+        StealthUtils.random_delay(1000, 1500)
+
+        # Step 3: Find file input and upload
+        print("  📤 Uploading file...")
+
+        # Look for file input element (might be hidden)
+        file_input_selectors = [
+            'input[type="file"]',
+            'input[accept*="pdf"]',
+            'input[accept*="text"]',
+        ]
+
+        file_input = None
+        for selector in file_input_selectors:
+            try:
+                file_input = page.query_selector(selector)
+                if file_input:
+                    break
+            except Exception:
+                continue
+
+        if file_input:
+            # Use set_input_files to upload
+            file_input.set_input_files(str(file_path))
+            print(f"  ✓ Selected file: {file_name}")
+        else:
+            # Try using page.set_input_files with a more general approach
+            # Sometimes the input is dynamically created
+            try:
+                # Wait for any file input to appear
+                file_input = page.wait_for_selector('input[type="file"]', timeout=5000)
+                if file_input:
+                    file_input.set_input_files(str(file_path))
+                    print(f"  ✓ Selected file: {file_name}")
+                else:
+                    raise Exception("Could not find file input element")
+            except Exception:
+                raise Exception("Could not find file input element for upload")
+
+        # Step 4: Wait for upload to complete
+        print("  ⏳ Waiting for upload to complete...")
+        StealthUtils.random_delay(2000, 3000)
+
+        # Check for processing/upload progress
+        max_wait = 120  # 2 minutes max for file upload
+        start_time = time.time()
+
+        while time.time() - start_time < max_wait:
+            # Check for error messages
+            try:
+                error_element = page.query_selector('.error-message, [role="alert"]')
+                if error_element and error_element.is_visible():
+                    error_text = error_element.inner_text()
+                    if error_text and "error" in error_text.lower():
+                        raise Exception(f"Upload error: {error_text}")
+            except Exception as e:
+                if "Upload error" in str(e):
+                    raise
+
+            # Check for loading/progress indicators
+            try:
+                loading = page.query_selector('.loading, .spinner, [aria-busy="true"], .progress')
+                if loading and loading.is_visible():
+                    time.sleep(2)
+                    continue
+            except Exception:
+                pass
+
+            # Check if upload dialog closed (success indicator)
+            try:
+                # If the upload dialog is gone and we're back to the notebook view
+                sources_panel = page.query_selector('.sources-panel, [data-panel="sources"]')
+                if sources_panel:
+                    # Look for the file in the sources list
+                    source_items = page.query_selector_all('.source-item, .source-card, [class*="source"]')
+                    for item in source_items:
+                        try:
+                            item_text = item.inner_text()
+                            if file_name.split('.')[0].lower() in item_text.lower():
+                                print("  ✅ File uploaded successfully!")
+                                return {
+                                    "status": "success",
+                                    "file_path": str(file_path),
+                                    "file_name": file_name,
+                                    "source_type": "File",
+                                    "notebook_url": notebook_url
+                                }
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            time.sleep(2)
+
+        # Assume success if no error
+        print("  ✅ Upload completed (verification timeout)")
+        return {
+            "status": "success",
+            "file_path": str(file_path),
+            "file_name": file_name,
+            "source_type": "File",
+            "notebook_url": notebook_url,
+            "note": "Could not verify file was added, please check manually"
+        }
+
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "error": str(e)}
+
+    finally:
+        if context:
+            try:
+                context.close()
+            except Exception:
+                pass
+        if playwright:
+            try:
+                playwright.stop()
+            except Exception:
+                pass
+
+
 def find_notebook_by_name(name: str) -> dict | None:
     """Find notebook by name (fuzzy match)"""
     result = list_notebooks(headless=True)
@@ -303,9 +497,13 @@ def find_notebook_by_name(name: str) -> dict | None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Add URL source to NotebookLM')
+    parser = argparse.ArgumentParser(description='Add source to NotebookLM (URL or local file)')
 
-    parser.add_argument('--url', required=True, help='URL to add as source (website or YouTube)')
+    # Source options (mutually exclusive)
+    source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument('--url', help='URL to add as source (website or YouTube)')
+    source_group.add_argument('--file', help='Local file to upload (PDF, TXT, MD, etc.)')
+
     parser.add_argument('--notebook-url', help='Full NotebookLM notebook URL')
     parser.add_argument('--notebook-id', help='Notebook UUID')
     parser.add_argument('--notebook-name', help='Notebook name (fuzzy match)')
@@ -357,17 +555,30 @@ def main():
             print("  python scripts/run.py list_notebooks.py")
             return 1
 
-    result = add_url_source(
-        notebook_url=notebook_url,
-        source_url=args.url,
-        headless=not args.show_browser
-    )
+    # Call appropriate function based on source type
+    if args.file:
+        result = add_file_source(
+            notebook_url=notebook_url,
+            file_path=args.file,
+            headless=not args.show_browser
+        )
+    else:
+        result = add_url_source(
+            notebook_url=notebook_url,
+            source_url=args.url,
+            headless=not args.show_browser
+        )
 
     if result["status"] == "success":
         # Auto-save last used notebook
         if notebook_id:
             set_last_notebook(notebook_id, notebook_name or "")
-        print(f"\n✅ Added {result.get('source_type', 'URL')} source: {result['source_url']}")
+
+        if args.file:
+            print(f"\n✅ Uploaded file: {result['file_name']}")
+        else:
+            print(f"\n✅ Added {result.get('source_type', 'URL')} source: {result['source_url']}")
+
         if result.get("note"):
             print(f"   Note: {result['note']}")
         return 0

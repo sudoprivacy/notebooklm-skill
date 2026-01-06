@@ -1,6 +1,6 @@
 ---
 name: notebooklm
-description: "Query Google NotebookLM notebooks, list notebooks, and add URL sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) mentions NotebookLM or shares notebook URLs, (5) asks to check/search their documentation"
+description: "Query Google NotebookLM notebooks, list notebooks, and add sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) wants to upload files (PDF, TXT, etc.) as sources, (5) mentions NotebookLM or shares notebook URLs, (6) asks to check/search their documentation"
 ---
 
 # NotebookLM Research Assistant Skill
@@ -13,8 +13,9 @@ Trigger when user:
 - Wants to query notebooks for answers
 - Wants to list/see their NotebookLM notebooks
 - Wants to add website/YouTube URLs as sources to a notebook
+- Wants to upload files (PDF, TXT, MD, DOCX, etc.) as sources
 - Mentions NotebookLM or shares notebook URL
-- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "query my docs"
+- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "upload this file", "query my docs"
 
 ## Critical: Always Use run.py Wrapper
 
@@ -112,7 +113,7 @@ python scripts/run.py ask_question.py --question "..." --show-browser
 
 **Auto-remember feature:** After a successful query, the notebook is automatically saved. Subsequent queries without `--notebook-name/--notebook-id/--notebook-url` will use the last notebook.
 
-### Step 5: Add URL Sources
+### Step 5: Add Sources (URLs and Files)
 
 ```bash
 # Add website URL as source (by notebook name)
@@ -121,13 +122,18 @@ python scripts/run.py add_source.py --url "https://example.com/article" --notebo
 # Add YouTube video as source
 python scripts/run.py add_source.py --url "https://youtube.com/watch?v=xxx" --notebook-id UUID
 
+# Upload local file as source
+python scripts/run.py add_source.py --file "/path/to/document.pdf" --notebook-name "my docs"
+
 # Uses last notebook if not specified
 python scripts/run.py add_source.py --url "https://example.com"
+python scripts/run.py add_source.py --file "notes.txt"
 ```
 
-Supported URL types:
-- Website URLs (articles, documentation, etc.)
-- YouTube video URLs (transcript will be imported)
+Supported source types:
+- **Website URLs** - Articles, documentation, etc.
+- **YouTube URLs** - Video transcripts will be imported
+- **Local files** - PDF, TXT, MD, DOCX, and other text-based files
 
 ## Follow-Up Mechanism (CRITICAL)
 
@@ -182,9 +188,13 @@ python scripts/run.py ask_question.py --question "..." [--notebook-name NAME] [-
 
 Priority for notebook selection: `--notebook-url` > `--notebook-id` > `--notebook-name` > last used notebook
 
-### Add URL Source (`add_source.py`)
+### Add Source (`add_source.py`)
 ```bash
+# Add URL source (website or YouTube)
 python scripts/run.py add_source.py --url "..." [--notebook-name NAME] [--notebook-id ID] [--notebook-url URL] [--show-browser]
+
+# Upload local file
+python scripts/run.py add_source.py --file "..." [--notebook-name NAME] [--notebook-id ID] [--notebook-url URL] [--show-browser]
 ```
 
 ### Data Cleanup (`cleanup_manager.py`)
@@ -274,7 +284,6 @@ Synthesize and respond to user
 
 - No session persistence (each question = new browser)
 - Rate limits on free Google accounts (50 queries/day)
-- File upload requires manual action (use add_source.py for URLs)
 - Browser overhead (few seconds per question)
 
 ## Resources (Skill Structure)
