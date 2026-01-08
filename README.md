@@ -76,7 +76,7 @@ mkdir -p ~/.claude/skills
 
 # 2. Clone this repository
 cd ~/.claude/skills
-git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
+git clone https://github.com/sudoprivacy/notebooklm-skill notebooklm
 
 # 3. That's it! Open Claude Code and say:
 "What are my skills?"
@@ -414,7 +414,7 @@ Stop the copy-paste dance. Start getting accurate, grounded answers directly in 
 ```bash
 # Get started in 30 seconds
 cd ~/.claude/skills
-git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
+git clone https://github.com/sudoprivacy/notebooklm-skill notebooklm
 # Open Claude Code: "What are my skills?"
 ```
 
