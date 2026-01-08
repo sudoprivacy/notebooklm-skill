@@ -1,6 +1,6 @@
 ---
 name: notebooklm
-description: "Query Google NotebookLM notebooks, list notebooks, and add sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) wants to upload files (PDF, TXT, etc.) as sources, (5) mentions NotebookLM or shares notebook URLs, (6) asks to check/search their documentation"
+description: "Query Google NotebookLM notebooks, list notebooks, and add sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) wants to upload files (PDF, TXT, etc.) as sources, (5) wants to list sources in a notebook, (6) mentions NotebookLM or shares notebook URLs, (7) asks to check/search their documentation"
 ---
 
 # NotebookLM Research Assistant Skill
@@ -14,8 +14,9 @@ Trigger when user:
 - Wants to list/see their NotebookLM notebooks
 - Wants to add website/YouTube URLs as sources to a notebook
 - Wants to upload files (PDF, TXT, MD, DOCX, etc.) as sources
+- Wants to list sources in a notebook
 - Mentions NotebookLM or shares notebook URL
-- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "upload this file", "query my docs"
+- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "upload this file", "query my docs", "list sources"
 
 ## Critical: Always Use run.py Wrapper
 
@@ -195,6 +196,24 @@ python scripts/run.py add_source.py --url "..." [--notebook-name NAME] [--notebo
 
 # Upload local file
 python scripts/run.py add_source.py --file "..." [--notebook-name NAME] [--notebook-id ID] [--notebook-url URL] [--show-browser]
+```
+
+### List Sources (`list_sources.py`)
+```bash
+# List all sources in a notebook (by name - RECOMMENDED)
+python scripts/run.py list_sources.py --notebook-name "my docs"
+
+# List by notebook ID
+python scripts/run.py list_sources.py --notebook-id UUID
+
+# List by notebook URL
+python scripts/run.py list_sources.py --notebook-url "https://..."
+
+# JSON output
+python scripts/run.py list_sources.py --notebook-name "my docs" --json
+
+# Debug mode (saves screenshot)
+python scripts/run.py list_sources.py --notebook-name "my docs" --debug --show-browser
 ```
 
 ### Data Cleanup (`cleanup_manager.py`)
