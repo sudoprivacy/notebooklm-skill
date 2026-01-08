@@ -149,68 +149,119 @@ def remove_source(
 
         StealthUtils.random_delay(500, 1000)
 
-        # Look for delete option - hover over source row to reveal menu button
+        # Look for delete option - find the specific source row and its menu button
         print("  🔍 Looking for delete option...")
 
         delete_clicked = False
 
-        # Try to hover over the source row to reveal the more options button
+        # Use JavaScript to find the exact source row and click its menu button
         try:
-            # Find the source row element by its text content
-            hover_result = page.evaluate('''(sourceName) => {
+            # Step 1: Find and hover over the specific source row to reveal the menu button
+            row_info = page.evaluate('''(sourceName) => {
                 const sourceNameLower = sourceName.toLowerCase();
 
-                // Find elements containing the source name
-                const allElements = document.querySelectorAll('*');
+                // Find all mat-checkbox elements (each source has one)
+                const checkboxes = document.querySelectorAll('mat-checkbox');
 
-                for (const el of allElements) {
-                    const text = el.innerText || el.textContent || '';
-                    if (text.toLowerCase().indexOf(sourceNameLower) >= 0 &&
-                        text.toLowerCase().indexOf('select all') === -1 &&
-                        text.length < 500) {  // Not too long (not the whole page)
+                for (const checkbox of checkboxes) {
+                    // Get the parent row element
+                    const row = checkbox.closest('[class*="source-row"]') ||
+                               checkbox.closest('[class*="list-item"]') ||
+                               checkbox.parentElement?.parentElement ||
+                               checkbox.parentElement;
 
-                        // Find the row/container element
-                        const row = el.closest('[class*="source"], [class*="row"], [class*="item"], mat-checkbox')?.parentElement ||
-                                   el.closest('div') ||
-                                   el;
+                    if (!row) continue;
 
-                        // Get bounding rect for hover
+                    // Check the text content of this row
+                    const rowText = row.innerText || row.textContent || '';
+
+                    // Match source name (but not "Select all sources")
+                    if (rowText.toLowerCase().indexOf(sourceNameLower) >= 0 &&
+                        rowText.toLowerCase().indexOf('select all') === -1) {
+
+                        // Found the matching row - get its bounding box
                         const rect = row.getBoundingClientRect();
-                        if (rect.width > 50 && rect.height > 20) {
-                            return {
-                                found: true,
-                                x: rect.x + rect.width - 30,  // Right side where menu button usually is
-                                y: rect.y + rect.height / 2
-                            };
+
+                        // Also try to find the more_vert button within this row
+                        const moreBtn = row.querySelector('button[aria-label*="More"], button[aria-label*="more"], mat-icon');
+                        let btnRect = null;
+                        if (moreBtn) {
+                            btnRect = moreBtn.getBoundingClientRect();
                         }
+
+                        return {
+                            found: true,
+                            rowRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                            btnRect: btnRect ? { x: btnRect.x, y: btnRect.y, width: btnRect.width, height: btnRect.height } : null,
+                            sourceName: rowText.split('\\n').filter(l => l.trim().length > 5 && l.toLowerCase().indexOf('select all') === -1)[0] || sourceName
+                        };
                     }
                 }
+
                 return { found: false };
             }''', source_name)
 
-            if hover_result.get("found"):
-                # Hover to reveal the menu button
-                page.mouse.move(hover_result["x"], hover_result["y"])
+            if not row_info.get("found"):
+                print(f"  ⚠️ Could not find source row for: {source_name}")
+            else:
+                print(f"  ✓ Found source row: {row_info.get('sourceName', source_name)[:50]}...")
+
+                # Hover over the right side of the row to reveal the menu button
+                row_rect = row_info["rowRect"]
+                hover_x = row_rect["x"] + row_rect["width"] - 40
+                hover_y = row_rect["y"] + row_rect["height"] / 2
+
+                page.mouse.move(hover_x, hover_y)
                 StealthUtils.random_delay(800, 1200)
                 print("  ✓ Hovering over source row...")
-        except Exception as e:
-            print(f"  ⚠️ Hover failed: {e}")
 
-        # Now try to find and click the more options menu
-        more_menu_selectors = [
-            'button[aria-label*="More"]',
-            'button[aria-label*="more"]',
-            'button[aria-label*="Options"]',
-            'button:has(mat-icon:has-text("more_vert"))',
-            'mat-icon:has-text("more_vert")',
-        ]
+                # Now click the more_vert button that should be visible
+                # Use JavaScript to click the button within this specific row
+                click_result = page.evaluate('''(sourceName) => {
+                    const sourceNameLower = sourceName.toLowerCase();
+                    const checkboxes = document.querySelectorAll('mat-checkbox');
 
-        for selector in more_menu_selectors:
-            try:
-                more_btn = page.wait_for_selector(selector, timeout=2000, state="visible")
-                if more_btn:
-                    more_btn.click()
-                    print(f"  ✓ Clicked more options menu")
+                    for (const checkbox of checkboxes) {
+                        const row = checkbox.closest('[class*="source-row"]') ||
+                                   checkbox.closest('[class*="list-item"]') ||
+                                   checkbox.parentElement?.parentElement ||
+                                   checkbox.parentElement;
+
+                        if (!row) continue;
+
+                        const rowText = row.innerText || row.textContent || '';
+
+                        if (rowText.toLowerCase().indexOf(sourceNameLower) >= 0 &&
+                            rowText.toLowerCase().indexOf('select all') === -1) {
+
+                            // Find and click the more button within THIS row
+                            const moreBtn = row.querySelector('button[aria-label*="More"], button[aria-label*="more"]') ||
+                                           row.querySelector('button:has(mat-icon)') ||
+                                           row.querySelector('mat-icon[fonticon="more_vert"]')?.closest('button') ||
+                                           row.querySelector('mat-icon')?.closest('button');
+
+                            if (moreBtn) {
+                                moreBtn.click();
+                                return { clicked: true, method: 'direct' };
+                            }
+
+                            // Fallback: try to find any clickable icon in the row
+                            const icons = row.querySelectorAll('mat-icon, button');
+                            for (const icon of icons) {
+                                const iconText = icon.textContent || '';
+                                if (iconText.indexOf('more') >= 0 || icon.getAttribute('aria-label')?.toLowerCase().indexOf('more') >= 0) {
+                                    icon.click();
+                                    return { clicked: true, method: 'icon' };
+                                }
+                            }
+                        }
+                    }
+
+                    return { clicked: false };
+                }''', source_name)
+
+                if click_result.get("clicked"):
+                    print(f"  ✓ Clicked more options menu (method: {click_result.get('method')})")
                     StealthUtils.random_delay(500, 1000)
 
                     # Look for delete option in the menu
@@ -233,19 +284,19 @@ def remove_source(
                         except Exception:
                             continue
 
-                    if delete_clicked:
-                        break
+                    if not delete_clicked:
+                        page.keyboard.press("Escape")
+                        StealthUtils.random_delay(300, 500)
 
-                    page.keyboard.press("Escape")
-                    StealthUtils.random_delay(300, 500)
-            except Exception:
-                continue
+        except Exception as e:
+            print(f"  ⚠️ Error finding source row: {e}")
 
-        # Try right-click context menu
+        # Fallback: Try right-click context menu on the source name
         if not delete_clicked:
             print("  🔍 Trying right-click context menu...")
             try:
-                source_el = page.locator(f'text="{source_name[:30]}"').first
+                # Use a more specific locator
+                source_el = page.locator(f'text="{actual_source_name[:40]}"').first
                 source_el.click(button="right")
                 StealthUtils.random_delay(500, 1000)
 
