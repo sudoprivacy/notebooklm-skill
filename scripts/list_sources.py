@@ -127,222 +127,146 @@ def list_sources(
 
         print("  🔍 Looking for sources...")
 
-        sources = []
-
-        # Try multiple selectors to find source items
-        source_selectors = [
-            # NotebookLM source item patterns
-            'source-item',
-            '.source-item',
-            '[data-source-id]',
-            '.sources-list source-item',
-            'source-selector source-item',
-            # Source cards
-            '.source-card',
-            '.source-entry',
-            # List items in sources panel
-            '.sources-panel li',
-            '[role="listitem"]',
+        # Find the scrollable sources container
+        scroll_container_selectors = [
+            'source-selector',
+            '.sources-panel',
+            '[class*="source-list"]',
+            '[class*="sources-container"]',
         ]
 
-        source_elements = []
-
-        for selector in source_selectors:
+        scroll_container = None
+        for selector in scroll_container_selectors:
             try:
-                elements = page.query_selector_all(selector)
-                if elements and len(elements) > 0:
-                    source_elements = elements
-                    print(f"  ✓ Found {len(elements)} sources using: {selector}")
+                container = page.query_selector(selector)
+                if container:
+                    scroll_container = container
                     break
             except Exception:
                 continue
 
-        # If no specific selectors work, try to extract from page content
-        if not source_elements:
-            print("  🔍 Trying alternative extraction method...")
-            try:
-                # Look for any clickable items in sources panel
-                # NotebookLM uses Angular components
-                source_elements = page.query_selector_all('source-selector [role="button"]')
-                if source_elements:
-                    print(f"  ✓ Found {len(source_elements)} sources via source-selector")
-            except Exception:
-                pass
+        # Scroll-and-collect: keep scrolling until no new sources found
+        all_sources = []
+        seen_names = set()
+        max_scroll_attempts = 30  # Safety limit for large notebooks
+        scroll_attempt = 0
+        last_count = 0
+        no_new_sources_count = 0
 
-        if not source_elements:
-            # Try extracting from the page using JavaScript
+        print("  📜 Scrolling to load all sources...")
+
+        while scroll_attempt < max_scroll_attempts:
+            scroll_attempt += 1
+
+            # Extract sources by parsing body text (more reliable than DOM queries)
+            # NotebookLM uses Angular which makes textContent empty for mat-checkbox
             try:
                 sources_data = page.evaluate('''() => {
+                    const bodyText = document.body.innerText;
+                    const lines = bodyText.split(String.fromCharCode(10));
+
+                    // Find index of 'Select all sources'
+                    let startIdx = -1;
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].toLowerCase().indexOf('select all') >= 0) {
+                            startIdx = i + 1;
+                            break;
+                        }
+                    }
+
+                    if (startIdx === -1) return [];
+
+                    // Icon prefixes to skip (appear before source names)
+                    const iconPrefixes = ['markdown', 'web', 'drive_pdf', 'youtube', 'video_youtube', 'check_box', 'check_box_outline_blank'];
                     const sources = [];
-                    const seenNames = new Set();
 
-                    // Helper to add unique source
-                    const addSource = (name, type) => {
-                        if (!name || name.length < 5) return;
-                        // Filter out HTML/CSS artifacts
-                        const lowerName = name.toLowerCase();
-                        const skipPatterns = [
-                            'select all', 'add source', 'search', 'web', 'fast research',
-                            'markdown', 'ideo_', 'youtube', 'video_', 'icon', 'button',
-                            'checkbox', 'mat-', 'ng-', 'class=', 'style=', 'aria-'
-                        ];
-                        if (skipPatterns.some(p => lowerName === p || (lowerName.length < 15 && lowerName.includes(p)))) {
-                            return;
+                    for (let i = startIdx; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line) continue;
+
+                        // Stop at navigation elements
+                        const lowerLine = line.toLowerCase();
+                        if (lowerLine === 'chat' || lowerLine === 'studio' ||
+                            lowerLine === 'add sources' || lowerLine.indexOf('notebook guide') >= 0) {
+                            break;
                         }
-                        // Must have at least one letter and one space, or be a filename with extension
-                        const hasSpace = name.includes(' ');
-                        const isFilename = /\\.\\w{2,4}$/.test(name);
-                        if (!hasSpace && !isFilename) return;
 
-                        if (!seenNames.has(lowerName)) {
-                            seenNames.add(lowerName);
-                            sources.push({ name, type: type || 'Document' });
-                        }
-                    };
+                        // Skip icon prefix lines
+                        if (iconPrefixes.indexOf(lowerLine) >= 0) continue;
+                        // Skip lines that look like icon identifiers (video_*, drive_*, etc.)
+                        if (lowerLine.indexOf('video_') === 0 || lowerLine.indexOf('drive_') === 0) continue;
 
-                    // Try to find source items
-                    const sourceItems = document.querySelectorAll('source-item, .source-item, [data-source-id]');
-                    sourceItems.forEach(item => {
-                        const name = item.querySelector('.source-title, .title, h3, [class*="title"]')?.textContent?.trim();
-                        const type = item.querySelector('.source-type, .type, [class*="type"]')?.textContent?.trim();
-                        addSource(name, type);
-                    });
-
-                    // Look for checkbox items in sources panel (NotebookLM uses checkboxes for sources)
-                    // Find the sources section first
-                    const sourcesSection = document.querySelector('source-selector, [class*="source"]');
-                    if (sourcesSection) {
-                        // Find all list items or checkbox containers
-                        const items = sourcesSection.querySelectorAll('mat-checkbox, [role="checkbox"], [role="listitem"]');
-                        items.forEach(item => {
-                            let label = item.textContent?.trim();
-                            // Skip "Select all sources" and other UI elements
-                            if (label &&
-                                !label.toLowerCase().includes('select all') &&
-                                !label.toLowerCase().includes('add source') &&
-                                !label.toLowerCase().includes('search') &&
-                                label.length > 3) {
-                                // Clean up the label
-                                label = label.replace(/^\\s*check_box.*?\\s*/i, '').trim();
-                                // Determine type based on icon - YouTube has red icon, documents have blue
-                                let type = 'Document';
-                                const parentRow = item.closest('[class*="row"], [class*="item"], mat-checkbox')?.parentElement || item;
-                                const hasYouTubeIcon = parentRow.innerHTML.includes('youtube') ||
-                                                       parentRow.innerHTML.includes('YouTube') ||
-                                                       parentRow.querySelector('img[src*="youtube"]') !== null ||
-                                                       parentRow.querySelector('[style*="red"]') !== null;
-                                if (hasYouTubeIcon) {
-                                    type = 'YouTube';
-                                }
-                                addSource(label, type);
+                        // Source names are typically longer than 10 chars
+                        if (line.length > 10) {
+                            // Determine type based on the previous line (icon prefix)
+                            let sourceType = 'Document';
+                            if (i > 0) {
+                                const prevLine = lines[i - 1].trim().toLowerCase();
+                                if (prevLine === 'youtube') sourceType = 'YouTube';
+                                else if (prevLine === 'web') sourceType = 'Website';
+                                else if (prevLine === 'drive_pdf') sourceType = 'PDF';
+                                else if (prevLine === 'markdown') sourceType = 'Document';
                             }
-                        });
-                    }
-
-                    // Alternative: Look for source entries by their container structure
-                    if (sources.length === 0) {
-                        // NotebookLM source entries often have an icon + text structure
-                        const allCheckboxes = document.querySelectorAll('mat-checkbox');
-                        allCheckboxes.forEach(cb => {
-                            const text = cb.textContent?.trim();
-                            if (text &&
-                                !text.toLowerCase().includes('select all') &&
-                                text.length > 5) {
-                                // Try to detect YouTube vs document
-                                const parent = cb.closest('[class*="source"]') || cb;
-                                const isYouTube = parent.innerHTML.toLowerCase().includes('youtube') ||
-                                                  parent.querySelector('svg[class*="youtube"]') !== null;
-                                addSource(text, isYouTube ? 'YouTube' : 'Document');
-                            }
-                        });
-                    }
-
-                    // Fallback: Look at page text for source names (between "Select all sources" and "Add sources")
-                    if (sources.length === 0) {
-                        const bodyText = document.body.innerText;
-                        // Find text between source list markers
-                        const selectAllIdx = bodyText.indexOf('Select all sources');
-                        if (selectAllIdx !== -1) {
-                            // Get text after "Select all sources"
-                            const afterSelectAll = bodyText.substring(selectAllIdx + 20);
-                            const lines = afterSelectAll.split('\\n')
-                                .map(l => l.trim())
-                                .filter(l => l.length > 5 &&
-                                           !l.includes('Add source') &&
-                                           !l.includes('Search') &&
-                                           !l.includes('Web') &&
-                                           !l.includes('Fast Research'));
-                            // Take first few lines as sources
-                            lines.slice(0, 10).forEach(line => {
-                                addSource(line, 'Document');
-                            });
+                            sources.push({ name: line, type: sourceType });
                         }
                     }
 
                     return sources;
                 }''')
 
+                # Add newly found sources
                 if sources_data:
-                    sources = sources_data
-                    print(f"  ✓ Extracted {len(sources)} sources via JavaScript")
+                    for src in sources_data:
+                        name = src.get('name', '')
+                        name_lower = name.lower() if name else ''
+                        if name and name_lower not in seen_names:
+                            seen_names.add(name_lower)
+                            all_sources.append(src)
+
             except Exception as e:
-                print(f"  ⚠️ JavaScript extraction failed: {e}")
+                print(f"  ⚠️ Extraction error: {e}")
 
-        # Extract from found elements if we have them
-        if source_elements and not sources:
-            for element in source_elements:
-                try:
-                    source_info = {}
+            current_count = len(all_sources)
 
-                    # Get source name/title
-                    name = None
-                    try:
-                        title_el = element.query_selector('.source-title, .title, h3, [class*="title"]')
-                        if title_el:
-                            name = title_el.inner_text().strip()
-                    except Exception:
-                        pass
+            # Check if we found new sources
+            if current_count == last_count:
+                no_new_sources_count += 1
+                if no_new_sources_count >= 3:
+                    # No new sources after 3 scroll attempts, we're done
+                    break
+            else:
+                no_new_sources_count = 0
+                if scroll_attempt == 1 or current_count % 10 == 0:
+                    print(f"  ✓ Found {current_count} sources so far...")
 
-                    if not name:
-                        try:
-                            name = element.inner_text().strip().split('\n')[0]
-                        except Exception:
-                            pass
+            last_count = current_count
 
-                    if name:
-                        source_info['name'] = name
+            # Scroll down to load more sources
+            try:
+                page.evaluate('''() => {
+                    // Try to find and scroll the sources container
+                    const containers = [
+                        document.querySelector('mat-sidenav-content'),
+                        document.querySelector('[class*="source-list"]'),
+                        document.querySelector('[class*="sources-container"]'),
+                    ];
 
-                    # Get source type
-                    try:
-                        type_el = element.query_selector('.source-type, .type, [class*="type"]')
-                        if type_el:
-                            source_info['type'] = type_el.inner_text().strip()
-                    except Exception:
-                        pass
+                    for (const container of containers) {
+                        if (container && container.scrollHeight > container.clientHeight) {
+                            container.scrollTop += 500;
+                            return true;
+                        }
+                    }
 
-                    # Get source ID
-                    try:
-                        source_id = element.get_attribute('data-source-id')
-                        if source_id:
-                            source_info['id'] = source_id
-                    except Exception:
-                        pass
+                    // Fallback: scroll the page
+                    window.scrollBy(0, 500);
+                    return false;
+                }''')
+                StealthUtils.random_delay(600, 1000)
+            except Exception:
+                break
 
-                    if source_info.get('name'):
-                        sources.append(source_info)
-
-                except Exception as e:
-                    print(f"  ⚠️ Error parsing source: {e}")
-                    continue
-
-        # Deduplicate by name
-        seen_names = set()
-        unique_sources = []
-        for src in sources:
-            name = src.get('name', '')
-            if name and name not in seen_names:
-                seen_names.add(name)
-                unique_sources.append(src)
+        unique_sources = all_sources
 
         if debug:
             # Save screenshot for debugging
