@@ -174,55 +174,107 @@ def list_sources(
             try:
                 sources_data = page.evaluate('''() => {
                     const sources = [];
+                    const seenNames = new Set();
+
+                    // Helper to add unique source
+                    const addSource = (name, type) => {
+                        if (!name || name.length < 5) return;
+                        // Filter out HTML/CSS artifacts
+                        const lowerName = name.toLowerCase();
+                        const skipPatterns = [
+                            'select all', 'add source', 'search', 'web', 'fast research',
+                            'markdown', 'ideo_', 'youtube', 'video_', 'icon', 'button',
+                            'checkbox', 'mat-', 'ng-', 'class=', 'style=', 'aria-'
+                        ];
+                        if (skipPatterns.some(p => lowerName === p || (lowerName.length < 15 && lowerName.includes(p)))) {
+                            return;
+                        }
+                        // Must have at least one letter and one space, or be a filename with extension
+                        const hasSpace = name.includes(' ');
+                        const isFilename = /\\.\\w{2,4}$/.test(name);
+                        if (!hasSpace && !isFilename) return;
+
+                        if (!seenNames.has(lowerName)) {
+                            seenNames.add(lowerName);
+                            sources.push({ name, type: type || 'Document' });
+                        }
+                    };
 
                     // Try to find source items
                     const sourceItems = document.querySelectorAll('source-item, .source-item, [data-source-id]');
                     sourceItems.forEach(item => {
                         const name = item.querySelector('.source-title, .title, h3, [class*="title"]')?.textContent?.trim();
                         const type = item.querySelector('.source-type, .type, [class*="type"]')?.textContent?.trim();
-                        const id = item.getAttribute('data-source-id');
-                        if (name) {
-                            sources.push({ name, type: type || 'Unknown', id });
-                        }
+                        addSource(name, type);
                     });
 
-                    // Alternative: Look for checkbox items (NotebookLM uses checkboxes for sources)
-                    if (sources.length === 0) {
-                        const checkboxItems = document.querySelectorAll('mat-checkbox, [role="checkbox"]');
-                        checkboxItems.forEach(item => {
-                            const label = item.textContent?.trim();
-                            // Skip "Select all sources" and empty labels
-                            if (label && !label.toLowerCase().includes('select all') && label.length > 3) {
-                                // Clean up the label (remove checkbox artifacts)
-                                const cleanLabel = label.replace(/^\\s*check_box.*?\\s*/i, '').trim();
-                                if (cleanLabel && cleanLabel.length > 3) {
-                                    sources.push({ name: cleanLabel, type: 'Document' });
+                    // Look for checkbox items in sources panel (NotebookLM uses checkboxes for sources)
+                    // Find the sources section first
+                    const sourcesSection = document.querySelector('source-selector, [class*="source"]');
+                    if (sourcesSection) {
+                        // Find all list items or checkbox containers
+                        const items = sourcesSection.querySelectorAll('mat-checkbox, [role="checkbox"], [role="listitem"]');
+                        items.forEach(item => {
+                            let label = item.textContent?.trim();
+                            // Skip "Select all sources" and other UI elements
+                            if (label &&
+                                !label.toLowerCase().includes('select all') &&
+                                !label.toLowerCase().includes('add source') &&
+                                !label.toLowerCase().includes('search') &&
+                                label.length > 3) {
+                                // Clean up the label
+                                label = label.replace(/^\\s*check_box.*?\\s*/i, '').trim();
+                                // Determine type based on icon - YouTube has red icon, documents have blue
+                                let type = 'Document';
+                                const parentRow = item.closest('[class*="row"], [class*="item"], mat-checkbox')?.parentElement || item;
+                                const hasYouTubeIcon = parentRow.innerHTML.includes('youtube') ||
+                                                       parentRow.innerHTML.includes('YouTube') ||
+                                                       parentRow.querySelector('img[src*="youtube"]') !== null ||
+                                                       parentRow.querySelector('[style*="red"]') !== null;
+                                if (hasYouTubeIcon) {
+                                    type = 'YouTube';
                                 }
+                                addSource(label, type);
                             }
                         });
                     }
 
-                    // Alternative: Look for source links or buttons with file names
+                    // Alternative: Look for source entries by their container structure
                     if (sources.length === 0) {
-                        const buttons = document.querySelectorAll('button[aria-label], [role="button"]');
-                        buttons.forEach(btn => {
-                            const label = btn.getAttribute('aria-label') || btn.textContent?.trim();
-                            // Look for file-like names (with extensions)
-                            if (label && /\\.(md|pdf|txt|docx|html)$/i.test(label)) {
-                                sources.push({ name: label, type: 'Document' });
+                        // NotebookLM source entries often have an icon + text structure
+                        const allCheckboxes = document.querySelectorAll('mat-checkbox');
+                        allCheckboxes.forEach(cb => {
+                            const text = cb.textContent?.trim();
+                            if (text &&
+                                !text.toLowerCase().includes('select all') &&
+                                text.length > 5) {
+                                // Try to detect YouTube vs document
+                                const parent = cb.closest('[class*="source"]') || cb;
+                                const isYouTube = parent.innerHTML.toLowerCase().includes('youtube') ||
+                                                  parent.querySelector('svg[class*="youtube"]') !== null;
+                                addSource(text, isYouTube ? 'YouTube' : 'Document');
                             }
                         });
                     }
 
-                    // Alternative: Look in source panel for any text containing file extensions
+                    // Fallback: Look at page text for source names (between "Select all sources" and "Add sources")
                     if (sources.length === 0) {
-                        const allText = document.body.innerText;
-                        const filePattern = /([\\w\\-_]+\\.(md|pdf|txt|docx|html))/gi;
-                        const matches = allText.match(filePattern);
-                        if (matches) {
-                            const uniqueFiles = [...new Set(matches)];
-                            uniqueFiles.forEach(file => {
-                                sources.push({ name: file, type: 'Document' });
+                        const bodyText = document.body.innerText;
+                        // Find text between source list markers
+                        const selectAllIdx = bodyText.indexOf('Select all sources');
+                        if (selectAllIdx !== -1) {
+                            // Get text after "Select all sources"
+                            const afterSelectAll = bodyText.substring(selectAllIdx + 20);
+                            const lines = afterSelectAll.split('\\n')
+                                .map(l => l.trim())
+                                .filter(l => l.length > 5 &&
+                                           !l.includes('Add source') &&
+                                           !l.includes('Search') &&
+                                           !l.includes('Web') &&
+                                           !l.includes('Fast Research'));
+                            // Take first few lines as sources
+                            lines.slice(0, 10).forEach(line => {
+                                addSource(line, 'Document');
                             });
                         }
                     }
