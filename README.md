@@ -354,6 +354,21 @@ pip install -r requirements.txt
 
 ---
 
+## Testing Approach
+
+This repository intentionally has **no automated unit tests**. Here's why:
+
+**Browser automation is inherently E2E**: All scripts interact with NotebookLM's web UI through browser automation (Patchright). Unit testing would require mocking the entire browser and NotebookLM's DOM, which provides little value and breaks whenever the UI changes.
+
+**How we test instead**:
+- **Manual E2E testing**: Each script is tested against live NotebookLM before release
+- **Debug mode**: All scripts support `--show-browser --debug` flags to visually verify behavior
+- **Incremental development**: Changes are tested immediately with real notebooks
+
+**If you're contributing**: Test your changes manually with `--show-browser` flag to verify the automation works correctly with the current NotebookLM UI.
+
+---
+
 ## Disclaimer
 
 This tool automates browser interactions with NotebookLM to make your workflow more efficient. However, a few friendly reminders:
