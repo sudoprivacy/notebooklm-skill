@@ -14,46 +14,9 @@ from patchright.sync_api import sync_playwright
 sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
-from notebook_config import get_last_notebook, set_last_notebook
+from notebook_config import get_last_notebook, set_last_notebook, find_notebook_url
 from browser_utils import BrowserFactory, StealthUtils
 from list_notebooks import list_notebooks
-
-
-def find_notebook_url(notebook_name: str = None, notebook_id: str = None, notebook_url: str = None) -> str:
-    """Resolve notebook URL from name, ID, or URL"""
-    if notebook_url:
-        return notebook_url
-
-    if notebook_id:
-        return f"https://notebooklm.google.com/notebook/{notebook_id}"
-
-    if notebook_name:
-        # Fetch notebooks and find by name (fuzzy match)
-        result = list_notebooks(headless=True, output_format="json")
-        if result["status"] != "success":
-            raise Exception(f"Failed to list notebooks: {result.get('error')}")
-
-        notebooks = result["notebooks"]
-        notebook_name_lower = notebook_name.lower()
-
-        # Try exact match first
-        for nb in notebooks:
-            if nb.get("name", "").lower() == notebook_name_lower:
-                return nb["url"]
-
-        # Try partial match
-        for nb in notebooks:
-            if notebook_name_lower in nb.get("name", "").lower():
-                return nb["url"]
-
-        raise Exception(f"Notebook not found: {notebook_name}")
-
-    # Try last used notebook
-    last_notebook = get_last_notebook()
-    if last_notebook:
-        return last_notebook
-
-    raise Exception("No notebook specified. Use --notebook-name, --notebook-id, or --notebook-url")
 
 
 def list_sources(

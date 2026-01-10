@@ -48,3 +48,56 @@ def set_last_notebook(notebook_id: str, name: str = ""):
     config["last_notebook_id"] = notebook_id
     config["last_notebook_name"] = name
     _save_config(config)
+
+
+def find_notebook_url(notebook_name: str = None, notebook_id: str = None, notebook_url: str = None) -> str:
+    """
+    Resolve notebook URL from name, ID, or URL.
+    Priority: url > id > name > last used
+
+    Args:
+        notebook_name: Notebook name (fuzzy match)
+        notebook_id: Notebook UUID
+        notebook_url: Direct notebook URL
+
+    Returns:
+        Notebook URL string
+
+    Raises:
+        Exception if notebook cannot be found
+    """
+    if notebook_url:
+        return notebook_url
+
+    if notebook_id:
+        return f"https://notebooklm.google.com/notebook/{notebook_id}"
+
+    if notebook_name:
+        # Lazy import to avoid circular dependency
+        from list_notebooks import list_notebooks
+
+        result = list_notebooks(headless=True, output_format="json")
+        if result["status"] != "success":
+            raise Exception(f"Failed to list notebooks: {result.get('error')}")
+
+        notebooks = result["notebooks"]
+        notebook_name_lower = notebook_name.lower()
+
+        # Try exact match first
+        for nb in notebooks:
+            if nb.get("name", "").lower() == notebook_name_lower:
+                return nb["url"]
+
+        # Try partial match
+        for nb in notebooks:
+            if notebook_name_lower in nb.get("name", "").lower():
+                return nb["url"]
+
+        raise Exception(f"Notebook not found: {notebook_name}")
+
+    # Try last used notebook
+    last = get_last_notebook()
+    if last:
+        return last["url"]
+
+    raise Exception("No notebook specified. Use --notebook-name, --notebook-id, or --notebook-url")
