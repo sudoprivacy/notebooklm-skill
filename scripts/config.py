@@ -12,7 +12,6 @@ BROWSER_STATE_DIR = DATA_DIR / "browser_state"
 BROWSER_PROFILE_DIR = BROWSER_STATE_DIR / "browser_profile"
 STATE_FILE = BROWSER_STATE_DIR / "state.json"
 AUTH_INFO_FILE = DATA_DIR / "auth_info.json"
-LIBRARY_FILE = DATA_DIR / "library.json"
 
 # NotebookLM Selectors
 QUERY_INPUT_SELECTORS = [

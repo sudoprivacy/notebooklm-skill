@@ -1,301 +1,138 @@
 #!/usr/bin/env python3
 """
 Cleanup Manager for NotebookLM Skill
-Manages cleanup of skill data and browser state
+Cleans up browser state and authentication data
 """
 
 import shutil
 import argparse
 from pathlib import Path
-from typing import Dict, List, Any
 
 
-class CleanupManager:
-    """
-    Manages cleanup of NotebookLM skill data
+def get_data_dir() -> Path:
+    """Get the data directory path"""
+    return Path(__file__).parent.parent / "data"
 
-    Features:
-    - Preview what will be deleted
-    - Selective cleanup options
-    - Library preservation
-    - Safe deletion with confirmation
-    """
 
-    def __init__(self):
-        """Initialize the cleanup manager"""
-        # Skill directory paths
-        self.skill_dir = Path(__file__).parent.parent
-        self.data_dir = self.skill_dir / "data"
+def format_size(size: int) -> str:
+    """Format size in human-readable form"""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
 
-    def get_cleanup_paths(self, preserve_library: bool = False) -> Dict[str, Any]:
-        """
-        Get paths that would be cleaned up
 
-        Args:
-            preserve_library: Keep library.json if True
+def get_dir_size(path: Path) -> int:
+    """Get total size of a directory"""
+    total = 0
+    try:
+        for item in path.rglob('*'):
+            if item.is_file():
+                total += item.stat().st_size
+    except Exception:
+        pass
+    return total
 
-        Returns:
-            Dict with paths and sizes
 
-        Note: .venv is NEVER deleted - it's part of the skill infrastructure
-        """
-        paths = {
-            'browser_state': [],
-            'sessions': [],
-            'library': [],
-            'auth': [],
-            'other': []
-        }
+def preview_cleanup():
+    """Show what will be cleaned up"""
+    data_dir = get_data_dir()
 
-        total_size = 0
+    print("\n🔍 Cleanup Preview")
+    print("=" * 50)
 
-        if self.data_dir.exists():
-            # Browser state
-            browser_state_dir = self.data_dir / "browser_state"
-            if browser_state_dir.exists():
-                for item in browser_state_dir.iterdir():
-                    size = self._get_size(item)
-                    paths['browser_state'].append({
-                        'path': str(item),
-                        'size': size,
-                        'type': 'dir' if item.is_dir() else 'file'
-                    })
-                    total_size += size
+    total_size = 0
+    items = []
 
-            # Sessions
-            sessions_file = self.data_dir / "sessions.json"
-            if sessions_file.exists():
-                size = sessions_file.stat().st_size
-                paths['sessions'].append({
-                    'path': str(sessions_file),
-                    'size': size,
-                    'type': 'file'
-                })
-                total_size += size
+    # Browser state
+    browser_state = data_dir / "browser_state"
+    if browser_state.exists():
+        size = get_dir_size(browser_state)
+        total_size += size
+        items.append(("📂 browser_state/", size, "Browser profile, cookies, cache"))
 
-            # Library (unless preserved)
-            if not preserve_library:
-                library_file = self.data_dir / "library.json"
-                if library_file.exists():
-                    size = library_file.stat().st_size
-                    paths['library'].append({
-                        'path': str(library_file),
-                        'size': size,
-                        'type': 'file'
-                    })
-                    total_size += size
+    # Auth info
+    auth_file = data_dir / "auth_info.json"
+    if auth_file.exists():
+        size = auth_file.stat().st_size
+        total_size += size
+        items.append(("📄 auth_info.json", size, "Authentication status"))
 
-            # Auth info
-            auth_info = self.data_dir / "auth_info.json"
-            if auth_info.exists():
-                size = auth_info.stat().st_size
-                paths['auth'].append({
-                    'path': str(auth_info),
-                    'size': size,
-                    'type': 'file'
-                })
-                total_size += size
+    # Config (last notebook)
+    config_file = data_dir / "config.json"
+    if config_file.exists():
+        size = config_file.stat().st_size
+        total_size += size
+        items.append(("📄 config.json", size, "Last used notebook"))
 
-            # Other files in data dir (but NEVER .venv!)
-            for item in self.data_dir.iterdir():
-                if item.name not in ['browser_state', 'sessions.json', 'library.json', 'auth_info.json']:
-                    size = self._get_size(item)
-                    paths['other'].append({
-                        'path': str(item),
-                        'size': size,
-                        'type': 'dir' if item.is_dir() else 'file'
-                    })
-                    total_size += size
+    if items:
+        for name, size, desc in items:
+            print(f"  {name:<25} {format_size(size):>10}  ({desc})")
+        print("=" * 50)
+        print(f"  Total: {format_size(total_size)}")
+    else:
+        print("  Nothing to clean up!")
 
-        return {
-            'categories': paths,
-            'total_size': total_size,
-            'total_items': sum(len(items) for items in paths.values())
-        }
+    return items, total_size
 
-    def _get_size(self, path: Path) -> int:
-        """Get size of file or directory in bytes"""
-        if path.is_file():
-            return path.stat().st_size
-        elif path.is_dir():
-            total = 0
-            try:
-                for item in path.rglob('*'):
-                    if item.is_file():
-                        total += item.stat().st_size
-            except Exception:
-                pass
-            return total
-        return 0
 
-    def _format_size(self, size: int) -> str:
-        """Format size in human-readable form"""
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if size < 1024:
-                return f"{size:.1f} {unit}"
-            size /= 1024
-        return f"{size:.1f} TB"
+def perform_cleanup():
+    """Actually delete the files"""
+    data_dir = get_data_dir()
+    deleted = []
 
-    def perform_cleanup(
-        self,
-        preserve_library: bool = False,
-        dry_run: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Perform the actual cleanup
+    # Delete browser_state directory
+    browser_state = data_dir / "browser_state"
+    if browser_state.exists():
+        shutil.rmtree(browser_state)
+        deleted.append("browser_state/")
+        print("  ✅ Deleted browser_state/")
 
-        Args:
-            preserve_library: Keep library.json if True
-            dry_run: Preview only, don't delete
+    # Delete auth_info.json
+    auth_file = data_dir / "auth_info.json"
+    if auth_file.exists():
+        auth_file.unlink()
+        deleted.append("auth_info.json")
+        print("  ✅ Deleted auth_info.json")
 
-        Returns:
-            Dict with cleanup results
-        """
-        cleanup_data = self.get_cleanup_paths(preserve_library)
-        deleted_items = []
-        failed_items = []
-        deleted_size = 0
+    # Delete config.json
+    config_file = data_dir / "config.json"
+    if config_file.exists():
+        config_file.unlink()
+        deleted.append("config.json")
+        print("  ✅ Deleted config.json")
 
-        if dry_run:
-            return {
-                'dry_run': True,
-                'would_delete': cleanup_data['total_items'],
-                'would_free': cleanup_data['total_size']
-            }
+    # Recreate browser_state dir
+    browser_state.mkdir(parents=True, exist_ok=True)
 
-        # Perform deletion
-        for category, items in cleanup_data['categories'].items():
-            for item_info in items:
-                path = Path(item_info['path'])
-                try:
-                    if path.exists():
-                        if path.is_dir():
-                            shutil.rmtree(path)
-                        else:
-                            path.unlink()
-                        deleted_items.append(str(path))
-                        deleted_size += item_info['size']
-                        print(f"  ✅ Deleted: {path.name}")
-                except Exception as e:
-                    failed_items.append({
-                        'path': str(path),
-                        'error': str(e)
-                    })
-                    print(f"  ❌ Failed: {path.name} ({e})")
-
-        # Recreate browser_state dir if everything was deleted
-        if not preserve_library and not failed_items:
-            browser_state_dir = self.data_dir / "browser_state"
-            browser_state_dir.mkdir(parents=True, exist_ok=True)
-
-        return {
-            'deleted_items': deleted_items,
-            'failed_items': failed_items,
-            'deleted_size': deleted_size,
-            'deleted_count': len(deleted_items),
-            'failed_count': len(failed_items)
-        }
-
-    def print_cleanup_preview(self, preserve_library: bool = False):
-        """Print a preview of what will be cleaned"""
-        data = self.get_cleanup_paths(preserve_library)
-
-        print("\n🔍 Cleanup Preview")
-        print("=" * 60)
-
-        for category, items in data['categories'].items():
-            if items:
-                print(f"\n📁 {category.replace('_', ' ').title()}:")
-                for item in items:
-                    path = Path(item['path'])
-                    size_str = self._format_size(item['size'])
-                    type_icon = "📂" if item['type'] == 'dir' else "📄"
-                    print(f"  {type_icon} {path.name:<30} {size_str:>10}")
-
-        print("\n" + "=" * 60)
-        print(f"Total items: {data['total_items']}")
-        print(f"Total size: {self._format_size(data['total_size'])}")
-
-        if preserve_library:
-            print("\n📚 Library will be preserved")
-
-        print("\nThis preview shows what would be deleted.")
-        print("Use --confirm to actually perform the cleanup.")
+    return deleted
 
 
 def main():
-    """Command-line interface for cleanup management"""
     parser = argparse.ArgumentParser(
-        description='Clean up NotebookLM skill data',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description='Clean up NotebookLM skill data (browser state, auth)',
         epilog="""
 Examples:
-  # Preview what will be deleted
-  python cleanup_manager.py
-
-  # Perform cleanup (delete everything)
-  python cleanup_manager.py --confirm
-
-  # Cleanup but keep library
-  python cleanup_manager.py --confirm --preserve-library
-
-  # Force cleanup without preview
-  python cleanup_manager.py --confirm --force
+  python cleanup_manager.py           # Preview what will be deleted
+  python cleanup_manager.py --confirm # Actually delete
         """
     )
-
-    parser.add_argument(
-        '--confirm',
-        action='store_true',
-        help='Actually perform the cleanup (without this, only preview)'
-    )
-
-    parser.add_argument(
-        '--preserve-library',
-        action='store_true',
-        help='Keep the notebook library (library.json)'
-    )
-
-    parser.add_argument(
-        '--force',
-        action='store_true',
-        help='Skip confirmation prompt'
-    )
-
+    parser.add_argument('--confirm', action='store_true', help='Actually perform cleanup')
     args = parser.parse_args()
 
-    # Initialize manager
-    manager = CleanupManager()
+    items, total_size = preview_cleanup()
+
+    if not items:
+        return
 
     if args.confirm:
-        # Show preview first unless forced
-        if not args.force:
-            manager.print_cleanup_preview(args.preserve_library)
-
-            print("\n⚠️  WARNING: This will delete the files shown above!")
-            print("   Note: .venv is preserved (part of skill infrastructure)")
-            response = input("Are you sure? (yes/no): ")
-
-            if response.lower() != 'yes':
-                print("Cleanup cancelled.")
-                return
-
-        # Perform cleanup
-        print("\n🗑️ Performing cleanup...")
-        result = manager.perform_cleanup(args.preserve_library, dry_run=False)
-
-        print(f"\n✅ Cleanup complete!")
-        print(f"  Deleted: {result['deleted_count']} items")
-        print(f"  Freed: {manager._format_size(result['deleted_size'])}")
-
-        if result['failed_count'] > 0:
-            print(f"  ⚠️ Failed: {result['failed_count']} items")
-
+        print("\n🗑️  Performing cleanup...")
+        deleted = perform_cleanup()
+        print(f"\n✅ Cleanup complete! Deleted {len(deleted)} items.")
+        print("\n💡 Run 'python auth_manager.py setup' to re-authenticate")
     else:
-        # Just show preview
-        manager.print_cleanup_preview(args.preserve_library)
-        print("\n💡 Note: Virtual environment (.venv) is never deleted")
-        print("   It's part of the skill infrastructure, not user data")
+        print("\n💡 Use --confirm to actually delete these files")
 
 
 if __name__ == "__main__":
