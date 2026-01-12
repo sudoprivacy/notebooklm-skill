@@ -71,5 +71,8 @@ htmlcov/
 # Package artifacts
 dist/
 build/
-*.egg-info/tmpclaude-*
+*.egg-info/
+
+# Claude Code temp files
+tmpclaude-*
 nul
