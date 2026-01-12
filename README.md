@@ -19,6 +19,34 @@
 
 ---
 
+## ⚠️ Important Notice
+
+**This is an UNOFFICIAL tool, not affiliated with, endorsed by, or sponsored by Google.**
+
+### Why This Project Exists
+
+As of January 2025, there's a gap in NotebookLM's official offerings:
+- **NotebookLM Plus (Enterprise)**: No mobile app or API access
+- **NotebookLM (Personal)**: No API access
+
+This project provides a bridge solution for users who need:
+- Programmatic access to their NotebookLM knowledge bases
+- Integration with AI coding assistants like Claude Code
+
+**We will sunset this project** once Google provides official API access or mobile solutions that meet these needs.
+
+### Legal
+
+- "NotebookLM" and "Google" are trademarks of Google LLC
+- This tool uses browser automation to interact with NotebookLM's web interface
+- Users are responsible for compliance with Google's Terms of Service
+- This project is provided "as-is" for personal and educational purposes
+- The authors assume no liability for any account restrictions or other consequences
+
+By using this tool, you acknowledge these terms and accept all associated risks.
+
+---
+
 ## ⚠️ Important: Local Claude Code Only
 
 **This skill works ONLY with local [Claude Code](https://github.com/anthropics/claude-code) installations, NOT in the web UI.**
