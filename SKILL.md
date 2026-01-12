@@ -1,6 +1,6 @@
 ---
 name: notebooklm
-description: "Query Google NotebookLM notebooks, list notebooks, and add sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) wants to upload files (PDF, TXT, etc.) as sources, (5) wants to list sources in a notebook, (6) wants to exclude sources from queries, (7) wants to remove/delete sources, (8) mentions NotebookLM or shares notebook URLs, (9) asks to check/search their documentation"
+description: "Query Google NotebookLM notebooks, list notebooks, and add sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) wants to upload files (PDF, TXT, etc.) as sources, (5) wants to list sources in a notebook, (6) wants to toggle/deactivate sources, (7) wants to remove/delete sources, (8) wants to download/extract source content, (9) mentions NotebookLM or shares notebook URLs, (10) asks to check/search their documentation"
 ---
 
 # NotebookLM Research Assistant Skill
@@ -17,8 +17,9 @@ Trigger when user:
 - Wants to list sources in a notebook
 - Wants to exclude specific sources from a query (use --exclude-sources)
 - Wants to remove/delete sources from a notebook
+- Wants to download/extract source content from a notebook
 - Mentions NotebookLM or shares notebook URL
-- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "upload this file", "query my docs", "list sources", "exclude source", "remove source"
+- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "upload this file", "query my docs", "list sources", "exclude source", "remove source", "download source"
 
 ## Critical: Always Use run.py Wrapper
 
@@ -241,6 +242,26 @@ python scripts/run.py remove_source.py "Daily Papers"
 # Debug mode (saves screenshot)
 python scripts/run.py remove_source.py "source" --debug --show-browser
 ```
+
+### Download Source (`download_source.py`)
+```bash
+# Download/extract source content from notebook
+python scripts/run.py download_source.py "source name" --notebook-name "my docs"
+
+# Source name supports partial matching
+python scripts/run.py download_source.py "manus_research"
+
+# Specify output path
+python scripts/run.py download_source.py "source" -o /path/to/output.md
+
+# Debug mode (saves screenshot)
+python scripts/run.py download_source.py "source" --debug --show-browser
+
+# JSON output
+python scripts/run.py download_source.py "source" --json
+```
+
+Output: Extracted content saved to `data/downloads/` directory (markdown format).
 
 ### Data Cleanup (`cleanup_manager.py`)
 ```bash
