@@ -71,4 +71,5 @@ htmlcov/
 # Package artifacts
 dist/
 build/
-*.egg-info/
+*.egg-info/tmpclaude-*
+nul
