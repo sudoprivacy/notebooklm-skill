@@ -33,6 +33,12 @@ This project provides a browser automation bridge for users who need programmati
 - This project is provided "as-is" for personal and educational purposes
 - The authors assume no liability for any account restrictions or other consequences
 
+**Prohibited Uses:**
+- Mass bulk operations or scraping
+- Commercial use (unless properly authorized)
+- Circumventing official service limitations
+- Infringing on copyrights or other legal rights
+
 By using this tool, you acknowledge these terms and accept all associated risks.
 
 ---
