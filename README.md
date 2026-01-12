@@ -18,7 +18,7 @@
 ### Why This Project Exists
 
 As of January 2025, there's a gap in NotebookLM's official offerings:
-- **NotebookLM Plus (Enterprise)**: No mobile app or API access
+- **NotebookLM Plus (Enterprise)**: No mobile app
 - **NotebookLM (Personal)**: No API access
 
 This project provides a browser automation bridge for users who need programmatic access to their NotebookLM knowledge bases — whether through Claude Code, Gemini CLI, Codex, or other AI coding assistants that support skill/plugin systems.
