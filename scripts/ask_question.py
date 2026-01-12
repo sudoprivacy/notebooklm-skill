@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from notebook_config import get_last_notebook, set_last_notebook
-from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
+from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS, SOURCES_TAB_SELECTORS
 from browser_utils import browser_session, StealthUtils
 from list_notebooks import list_notebooks
 
@@ -34,7 +34,94 @@ FOLLOW_UP_REMINDER = (
 )
 
 
-def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> str:
+def deactivate_sources(page, exclude_sources: list[str]) -> int:
+    """
+    Deactivate (uncheck) specified sources in the current notebook.
+
+    Args:
+        page: Playwright page object
+        exclude_sources: List of source names to deactivate (partial match)
+
+    Returns:
+        Number of sources deactivated
+    """
+    if not exclude_sources:
+        return 0
+
+    print(f"  🔇 Excluding sources: {', '.join(exclude_sources)}")
+
+    # Click Sources tab
+    for selector in SOURCES_TAB_SELECTORS:
+        try:
+            tab = page.wait_for_selector(selector, timeout=5000, state="visible")
+            if tab:
+                tab.click()
+                StealthUtils.random_delay(1000, 1500)
+                break
+        except:
+            continue
+
+    deactivated = 0
+
+    for source_name in exclude_sources:
+        # Find and click the checkbox for this source
+        result = page.evaluate('''(sourceName) => {
+            const sourceNameLower = sourceName.toLowerCase();
+            const checkboxes = document.querySelectorAll('mat-checkbox');
+
+            for (const cb of checkboxes) {
+                const row = cb.closest('[class*="source"]') || cb.parentElement?.parentElement;
+                if (!row) continue;
+                const rowText = row.innerText || '';
+
+                if (rowText.toLowerCase().indexOf(sourceNameLower) >= 0 &&
+                    rowText.toLowerCase().indexOf('select all') < 0) {
+
+                    // Check if currently checked
+                    const input = cb.querySelector('input[type="checkbox"]');
+                    const isChecked = input ? input.checked :
+                                    cb.classList.contains('mat-mdc-checkbox-checked');
+
+                    if (isChecked && input) {
+                        input.click();
+                        // Get actual source name (filter out icon labels)
+                        const lines = rowText.split('\\n').map(l => l.trim()).filter(l => l.length > 10);
+                        const nameLines = lines.filter(l => {
+                            const lower = l.toLowerCase();
+                            return lower !== 'markdown' && lower !== 'web' && lower !== 'youtube';
+                        });
+                        const name = nameLines[0] || sourceName;
+                        return { found: true, clicked: true, name: name.substring(0, 60) };
+                    } else if (!isChecked) {
+                        return { found: true, clicked: false, reason: 'already deactivated' };
+                    }
+                }
+            }
+            return { found: false };
+        }''', source_name)
+
+        if result.get('clicked'):
+            print(f"    ⬜ Deactivated: {result.get('name', source_name)}")
+            deactivated += 1
+            StealthUtils.random_delay(300, 500)
+        elif result.get('found'):
+            print(f"    ℹ️ Already deactivated: {source_name}")
+        else:
+            print(f"    ⚠️ Source not found: {source_name}")
+
+    # Click Chat tab to go back
+    try:
+        chat_tab = page.wait_for_selector('button:has-text("Chat"), [role="tab"]:has-text("Chat")', timeout=3000)
+        if chat_tab:
+            chat_tab.click()
+            StealthUtils.random_delay(500, 800)
+    except:
+        pass
+
+    return deactivated
+
+
+def ask_notebooklm(question: str, notebook_url: str, headless: bool = True, exclude_sources: list[str] = None) -> str:
     """
     Ask a question to NotebookLM
 
@@ -42,6 +129,7 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
         question: Question to ask
         notebook_url: NotebookLM notebook URL
         headless: Run browser in headless mode
+        exclude_sources: List of source names to exclude from the query (partial match)
 
     Returns:
         Answer text from NotebookLM
@@ -56,6 +144,11 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> s
 
             # Wait for NotebookLM
             page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
+            StealthUtils.random_delay(1000, 1500)
+
+            # Deactivate excluded sources before asking
+            if exclude_sources:
+                deactivate_sources(page, exclude_sources)
 
             # Wait for query input (MCP approach)
             print("  ⏳ Waiting for query input...")
@@ -169,6 +262,7 @@ def main():
     parser.add_argument('--notebook-url', help='Full NotebookLM notebook URL')
     parser.add_argument('--notebook-id', help='Notebook UUID (or partial)')
     parser.add_argument('--notebook-name', help='Notebook name (fuzzy match)')
+    parser.add_argument('--exclude-sources', help='Comma-separated source names to exclude from query')
     parser.add_argument('--show-browser', action='store_true', help='Show browser')
 
     args = parser.parse_args()
@@ -222,11 +316,17 @@ def main():
             print("  python scripts/run.py list_notebooks.py")
             return 1
 
+    # Parse exclude sources
+    exclude_sources = None
+    if args.exclude_sources:
+        exclude_sources = [s.strip() for s in args.exclude_sources.split(',') if s.strip()]
+
     # Ask the question
     answer = ask_notebooklm(
         question=args.question,
         notebook_url=notebook_url,
-        headless=not args.show_browser
+        headless=not args.show_browser,
+        exclude_sources=exclude_sources
     )
 
     if answer:

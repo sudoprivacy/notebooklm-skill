@@ -1,6 +1,6 @@
 ---
 name: notebooklm
-description: "Query Google NotebookLM notebooks, list notebooks, and add sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) wants to upload files (PDF, TXT, etc.) as sources, (5) wants to list sources in a notebook, (6) wants to toggle/deactivate sources, (7) wants to remove/delete sources, (8) mentions NotebookLM or shares notebook URLs, (9) asks to check/search their documentation"
+description: "Query Google NotebookLM notebooks, list notebooks, and add sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) wants to upload files (PDF, TXT, etc.) as sources, (5) wants to list sources in a notebook, (6) wants to exclude sources from queries, (7) wants to remove/delete sources, (8) mentions NotebookLM or shares notebook URLs, (9) asks to check/search their documentation"
 ---
 
 # NotebookLM Research Assistant Skill
@@ -15,10 +15,10 @@ Trigger when user:
 - Wants to add website/YouTube URLs as sources to a notebook
 - Wants to upload files (PDF, TXT, MD, DOCX, etc.) as sources
 - Wants to list sources in a notebook
-- Wants to deactivate/disable sources (toggle off without deleting)
+- Wants to exclude specific sources from a query (use --exclude-sources)
 - Wants to remove/delete sources from a notebook
 - Mentions NotebookLM or shares notebook URL
-- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "upload this file", "query my docs", "list sources", "disable source", "remove source"
+- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "upload this file", "query my docs", "list sources", "exclude source", "remove source"
 
 ## Critical: Always Use run.py Wrapper
 
@@ -186,10 +186,22 @@ python scripts/run.py delete_notebook.py --notebook-id UUID --confirm   # By ID
 
 ### Question Interface (`ask_question.py`)
 ```bash
-python scripts/run.py ask_question.py --question "..." [--notebook-name NAME] [--notebook-id ID] [--notebook-url URL] [--show-browser]
+python scripts/run.py ask_question.py --question "..." [--notebook-name NAME] [--notebook-id ID] [--notebook-url URL] [--exclude-sources "source1,source2"] [--show-browser]
 ```
 
+Options:
+- `--exclude-sources`: Comma-separated source names to temporarily exclude from this query (partial match supported)
+
 Priority for notebook selection: `--notebook-url` > `--notebook-id` > `--notebook-name` > last used notebook
+
+Example excluding sources:
+```bash
+# Ask question but exclude manus_research from the query
+python scripts/run.py ask_question.py --question "What is our company strategy?" --notebook-name "Project" --exclude-sources "manus_research"
+
+# Exclude multiple sources
+python scripts/run.py ask_question.py --question "..." --exclude-sources "manus,old_notes,draft"
+```
 
 ### Add Source (`add_source.py`)
 ```bash
@@ -216,24 +228,6 @@ python scripts/run.py list_sources.py --notebook-name "my docs" --json
 
 # Debug mode (saves screenshot)
 python scripts/run.py list_sources.py --notebook-name "my docs" --debug --show-browser
-```
-
-### Toggle Source Activation (`toggle_source.py`)
-```bash
-# Deactivate a source (uncheck - source not used in queries but still exists)
-python scripts/run.py toggle_source.py "source name" --notebook-name "my docs" --deactivate
-
-# Activate a source (check)
-python scripts/run.py toggle_source.py "source name" --notebook-name "my docs" --activate
-
-# Toggle (flip current state)
-python scripts/run.py toggle_source.py "source name" --notebook-name "my docs"
-
-# Source name supports partial matching
-python scripts/run.py toggle_source.py "Daily Papers" --deactivate
-
-# Debug mode
-python scripts/run.py toggle_source.py "source" --deactivate --debug --show-browser
 ```
 
 ### Remove Source (`remove_source.py`)

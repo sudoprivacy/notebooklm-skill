@@ -64,65 +64,59 @@ def list_sources(
             while scroll_attempt < max_scroll_attempts:
                 scroll_attempt += 1
 
-                # Extract sources by parsing body text
+                # Extract sources using DOM query (more reliable than text parsing)
                 try:
                     sources_data = page.evaluate('''() => {
-                        const bodyText = document.body.innerText;
-                        const lines = bodyText.split(String.fromCharCode(10));
-
-                        let startIdx = -1;
-                        for (let i = 0; i < lines.length; i++) {
-                            if (lines[i].toLowerCase().indexOf('select all') >= 0) {
-                                startIdx = i + 1;
-                                break;
-                            }
-                        }
-
-                        if (startIdx === -1) return [];
-
-                        const iconPrefixes = ['markdown', 'web', 'drive_pdf', 'youtube', 'video_youtube'];
                         const sources = [];
 
-                        for (let i = startIdx; i < lines.length; i++) {
-                            const line = lines[i].trim();
-                            if (!line) continue;
+                        // Find all mat-checkbox elements (each source has one)
+                        const checkboxes = document.querySelectorAll('mat-checkbox');
 
-                            const lowerLine = line.toLowerCase();
-                            if (lowerLine === 'chat' || lowerLine === 'studio' ||
-                                lowerLine === 'add sources' || lowerLine.indexOf('notebook guide') >= 0) {
-                                break;
-                            }
+                        for (const checkbox of checkboxes) {
+                            // Get the parent row to find the source name
+                            const row = checkbox.closest('[class*="source"]') ||
+                                       checkbox.parentElement?.parentElement ||
+                                       checkbox.parentElement;
+                            if (!row) continue;
 
-                            // Skip icon prefixes but not checkbox states
-                            if (iconPrefixes.indexOf(lowerLine) >= 0) continue;
-                            if (lowerLine.indexOf('video_') === 0 || lowerLine.indexOf('drive_') === 0) continue;
-                            if (lowerLine === 'check_box' || lowerLine === 'check_box_outline_blank') continue;
+                            const rowText = row.innerText || row.textContent || '';
 
-                            if (line.length > 10) {
-                                let sourceType = 'Document';
-                                let enabled = true;  // Default to enabled
+                            // Skip "Select all sources" row
+                            if (rowText.toLowerCase().indexOf('select all') >= 0) continue;
 
-                                // Look back to find checkbox and type
-                                for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
-                                    const prevLine = lines[j].trim().toLowerCase();
-                                    if (prevLine === 'check_box') {
-                                        enabled = true;
-                                        break;
-                                    } else if (prevLine === 'check_box_outline_blank') {
-                                        enabled = false;
-                                        break;
-                                    }
-                                }
+                            // Get checkbox state - check multiple ways
+                            const input = checkbox.querySelector('input[type="checkbox"]');
+                            const isChecked = input ? input.checked :
+                                            checkbox.classList.contains('mat-mdc-checkbox-checked') ||
+                                            checkbox.classList.contains('mat-checkbox-checked');
 
-                                // Determine source type
-                                if (i > 0) {
-                                    const prevLine = lines[i - 1].trim().toLowerCase();
-                                    if (prevLine === 'youtube') sourceType = 'YouTube';
-                                    else if (prevLine === 'web') sourceType = 'Website';
-                                    else if (prevLine === 'drive_pdf') sourceType = 'PDF';
-                                }
-                                sources.push({ name: line, type: sourceType, enabled: enabled });
-                            }
+                            // Extract source name (first non-empty line with length > 10)
+                            const lines = rowText.split('\\n').map(l => l.trim()).filter(l => l.length > 10);
+                            // Filter out icon names and other noise
+                            const nameLines = lines.filter(l => {
+                                const lower = l.toLowerCase();
+                                return lower !== 'markdown' &&
+                                       lower !== 'web' &&
+                                       lower !== 'youtube' &&
+                                       !lower.startsWith('drive_') &&
+                                       !lower.startsWith('video_');
+                            });
+
+                            if (nameLines.length === 0) continue;
+                            const name = nameLines[0];
+
+                            // Determine source type from icons in the row
+                            let sourceType = 'Document';
+                            const rowLower = rowText.toLowerCase();
+                            if (rowLower.indexOf('youtube') >= 0) sourceType = 'YouTube';
+                            else if (rowLower.indexOf('web') >= 0 && rowLower.indexOf('web ') < 0) sourceType = 'Website';
+                            else if (rowLower.indexOf('drive_pdf') >= 0) sourceType = 'PDF';
+
+                            sources.push({
+                                name: name,
+                                type: sourceType,
+                                enabled: isChecked
+                            });
                         }
 
                         return sources;
