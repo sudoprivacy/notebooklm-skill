@@ -26,6 +26,23 @@ RESPONSE_SELECTORS = [
     "[data-message-author='assistant']",
 ]
 
+# Sources Tab Selectors
+SOURCES_TAB_SELECTORS = [
+    'button:has-text("Sources")',
+    '[role="tab"]:has-text("Sources")',
+    'div:has-text("Sources"):not(:has(*))',
+    '.tab:has-text("Sources")',
+]
+
+ADD_SOURCE_BUTTON_SELECTORS = [
+    'button[aria-label="Add source"]',
+    'button[aria-label="Add sources"]',
+    'button:has-text("Add source")',
+    'button:has-text("Add")',
+    '[data-test-id="add-source-button"]',
+    'button:has(mat-icon:has-text("add"))',
+]
+
 # Browser Configuration
 BROWSER_ARGS = [
     '--disable-blink-features=AutomationControlled',  # Patches navigator.webdriver

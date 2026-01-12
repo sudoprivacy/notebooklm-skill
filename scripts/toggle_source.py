@@ -7,17 +7,13 @@ import argparse
 import json
 import sys
 import re
-import time
 from pathlib import Path
-
-from patchright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from auth_manager import AuthManager
-from notebook_config import get_last_notebook, set_last_notebook, find_notebook_url
-from browser_utils import BrowserFactory, StealthUtils
-from list_notebooks import list_notebooks
+from notebook_config import set_last_notebook, find_notebook_url
+from browser_utils import browser_session, StealthUtils
+from config import SOURCES_TAB_SELECTORS
 
 
 def toggle_source(
@@ -44,11 +40,6 @@ def toggle_source(
     Returns:
         Dict with status and result
     """
-    auth = AuthManager()
-
-    if not auth.is_authenticated():
-        return {"status": "error", "error": "Not authenticated. Run: python auth_manager.py setup"}
-
     try:
         resolved_url = find_notebook_url(notebook_name, notebook_id, notebook_url)
     except Exception as e:
@@ -63,152 +54,130 @@ def toggle_source(
     print(f"🔄 {action} source: {source_name}")
     print(f"  📚 Notebook: {resolved_url}")
 
-    playwright = None
-    context = None
-
     try:
-        playwright = sync_playwright().start()
-        context = BrowserFactory.launch_persistent_context(playwright, headless=headless)
+        with browser_session(headless=headless) as page:
+            print("  🌐 Opening notebook...")
+            page.goto(resolved_url, wait_until="domcontentloaded")
 
-        page = context.new_page()
-        print("  🌐 Opening notebook...")
-        page.goto(resolved_url, wait_until="domcontentloaded")
+            page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=15000)
+            StealthUtils.random_delay(2000, 3000)
 
-        page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=15000)
-        StealthUtils.random_delay(2000, 3000)
+            # Click on Sources tab
+            print("  🔍 Clicking Sources tab...")
+            for selector in SOURCES_TAB_SELECTORS:
+                try:
+                    tab = page.wait_for_selector(selector, timeout=5000, state="visible")
+                    if tab:
+                        tab.click()
+                        StealthUtils.random_delay(1500, 2500)
+                        break
+                except Exception:
+                    continue
 
-        # Click on Sources tab
-        print("  🔍 Clicking Sources tab...")
-        sources_tab_selectors = [
-            'button:has-text("Sources")',
-            '[role="tab"]:has-text("Sources")',
-        ]
-        for selector in sources_tab_selectors:
-            try:
-                tab = page.wait_for_selector(selector, timeout=5000, state="visible")
-                if tab:
-                    tab.click()
-                    StealthUtils.random_delay(1500, 2500)
-                    break
-            except Exception:
-                continue
+            # Find the source by name and click its checkbox
+            print(f"  🔍 Looking for source: {source_name}...")
 
-        # Find the source by name and click its checkbox
-        print(f"  🔍 Looking for source: {source_name}...")
+            # Use JavaScript to find and click the checkbox for the matching source
+            result = page.evaluate('''(args) => {
+                const { sourceName, activateMode } = args;
+                const sourceNameLower = sourceName.toLowerCase();
 
-        # Use JavaScript to find and click the checkbox for the matching source
-        result = page.evaluate('''(args) => {
-            const { sourceName, activateMode } = args;
-            const sourceNameLower = sourceName.toLowerCase();
+                // Find all mat-checkbox elements
+                const checkboxes = document.querySelectorAll('mat-checkbox');
 
-            // Find all mat-checkbox elements
-            const checkboxes = document.querySelectorAll('mat-checkbox');
+                for (const checkbox of checkboxes) {
+                    // Get the parent row to find the source name
+                    const row = checkbox.closest('[class*="source"]') || checkbox.parentElement?.parentElement;
+                    if (!row) continue;
 
-            for (const checkbox of checkboxes) {
-                // Get the parent row to find the source name
-                const row = checkbox.closest('[class*="source"]') || checkbox.parentElement?.parentElement;
-                if (!row) continue;
+                    const rowText = row.innerText || row.textContent || '';
 
-                const rowText = row.innerText || row.textContent || '';
+                    // Check if this row contains the source name
+                    if (rowText.toLowerCase().indexOf(sourceNameLower) >= 0) {
+                        // Skip "Select all sources"
+                        if (rowText.toLowerCase().indexOf('select all') >= 0) continue;
 
-                // Check if this row contains the source name
-                if (rowText.toLowerCase().indexOf(sourceNameLower) >= 0) {
-                    // Skip "Select all sources"
-                    if (rowText.toLowerCase().indexOf('select all') >= 0) continue;
+                        // Find the checkbox input or clickable element
+                        const input = checkbox.querySelector('input[type="checkbox"]');
+                        const isChecked = input ? input.checked : checkbox.classList.contains('mat-checkbox-checked');
 
-                    // Find the checkbox input or clickable element
-                    const input = checkbox.querySelector('input[type="checkbox"]');
-                    const isChecked = input ? input.checked : checkbox.classList.contains('mat-checkbox-checked');
+                        // Determine if we should click
+                        let shouldClick = false;
+                        if (activateMode === null) {
+                            // Toggle mode
+                            shouldClick = true;
+                        } else if (activateMode === true && !isChecked) {
+                            // Activate mode, currently unchecked
+                            shouldClick = true;
+                        } else if (activateMode === false && isChecked) {
+                            // Deactivate mode, currently checked
+                            shouldClick = true;
+                        }
 
-                    // Determine if we should click
-                    let shouldClick = false;
-                    if (activateMode === null) {
-                        // Toggle mode
-                        shouldClick = true;
-                    } else if (activateMode === true && !isChecked) {
-                        // Activate mode, currently unchecked
-                        shouldClick = true;
-                    } else if (activateMode === false && isChecked) {
-                        // Deactivate mode, currently checked
-                        shouldClick = true;
-                    }
+                        if (shouldClick) {
+                            // Click the checkbox
+                            const clickTarget = checkbox.querySelector('.mat-checkbox-inner-container') ||
+                                              checkbox.querySelector('.mat-checkbox-frame') ||
+                                              checkbox;
+                            clickTarget.click();
 
-                    if (shouldClick) {
-                        // Click the checkbox
-                        const clickTarget = checkbox.querySelector('.mat-checkbox-inner-container') ||
-                                          checkbox.querySelector('.mat-checkbox-frame') ||
-                                          checkbox;
-                        clickTarget.click();
-
-                        return {
-                            found: true,
-                            clicked: true,
-                            sourceName: rowText.split('\\n').filter(l => l.trim().length > 10)[0] || sourceName,
-                            wasChecked: isChecked,
-                            nowChecked: !isChecked
-                        };
-                    } else {
-                        return {
-                            found: true,
-                            clicked: false,
-                            sourceName: rowText.split('\\n').filter(l => l.trim().length > 10)[0] || sourceName,
-                            wasChecked: isChecked,
-                            nowChecked: isChecked,
-                            reason: activateMode === true ? 'Already activated' : 'Already deactivated'
-                        };
+                            return {
+                                found: true,
+                                clicked: true,
+                                sourceName: rowText.split('\\n').filter(l => l.trim().length > 10)[0] || sourceName,
+                                wasChecked: isChecked,
+                                nowChecked: !isChecked
+                            };
+                        } else {
+                            return {
+                                found: true,
+                                clicked: false,
+                                sourceName: rowText.split('\\n').filter(l => l.trim().length > 10)[0] || sourceName,
+                                wasChecked: isChecked,
+                                nowChecked: isChecked,
+                                reason: activateMode === true ? 'Already activated' : 'Already deactivated'
+                            };
+                        }
                     }
                 }
-            }
 
-            return { found: false, error: 'Source not found' };
-        }''', {"sourceName": source_name, "activateMode": activate})
+                return { found: false, error: 'Source not found' };
+            }''', {"sourceName": source_name, "activateMode": activate})
 
-        if debug:
-            debug_dir = Path(__file__).parent.parent / "data" / "debug"
-            debug_dir.mkdir(parents=True, exist_ok=True)
-            try:
-                page.screenshot(path=str(debug_dir / "toggle_source.png"))
-                print(f"  📸 Screenshot saved to: {debug_dir / 'toggle_source.png'}")
-            except Exception as e:
-                print(f"  ⚠️ Could not save screenshot: {e}")
+            if debug:
+                debug_dir = Path(__file__).parent.parent / "data" / "debug"
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    page.screenshot(path=str(debug_dir / "toggle_source.png"))
+                    print(f"  📸 Screenshot saved to: {debug_dir / 'toggle_source.png'}")
+                except Exception as e:
+                    print(f"  ⚠️ Could not save screenshot: {e}")
 
-        if result.get("found"):
-            if result.get("clicked"):
-                status_emoji = "✅" if result.get("nowChecked") else "⬜"
-                print(f"  {status_emoji} Source '{result.get('sourceName', source_name)}' is now {'activated' if result.get('nowChecked') else 'deactivated'}")
+            if result.get("found"):
+                if result.get("clicked"):
+                    status_emoji = "✅" if result.get("nowChecked") else "⬜"
+                    print(f"  {status_emoji} Source '{result.get('sourceName', source_name)}' is now {'activated' if result.get('nowChecked') else 'deactivated'}")
+                else:
+                    print(f"  ℹ️ {result.get('reason', 'No action needed')}")
+
+                set_last_notebook(resolved_url)
+
+                return {
+                    "status": "success",
+                    "source": result.get("sourceName", source_name),
+                    "activated": result.get("nowChecked"),
+                    "changed": result.get("clicked", False),
+                    "notebook_url": resolved_url
+                }
             else:
-                print(f"  ℹ️ {result.get('reason', 'No action needed')}")
-
-            set_last_notebook(resolved_url)
-
-            return {
-                "status": "success",
-                "source": result.get("sourceName", source_name),
-                "activated": result.get("nowChecked"),
-                "changed": result.get("clicked", False),
-                "notebook_url": resolved_url
-            }
-        else:
-            print(f"  ❌ Source not found: {source_name}")
-            return {"status": "error", "error": f"Source not found: {source_name}"}
+                print(f"  ❌ Source not found: {source_name}")
+                return {"status": "error", "error": f"Source not found: {source_name}"}
 
     except Exception as e:
         print(f"  ❌ Error: {e}")
         import traceback
         traceback.print_exc()
         return {"status": "error", "error": str(e)}
-
-    finally:
-        if context:
-            try:
-                context.close()
-            except Exception:
-                pass
-        if playwright:
-            try:
-                playwright.stop()
-            except Exception:
-                pass
 
 
 def main():

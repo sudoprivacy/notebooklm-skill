@@ -6,10 +6,51 @@ Handles browser launching, stealth features, and common interactions
 import json
 import time
 import random
-from typing import Optional, List
+from contextlib import contextmanager
+from typing import Optional, List, Generator
 
-from patchright.sync_api import Playwright, BrowserContext, Page
+from patchright.sync_api import Playwright, BrowserContext, Page, sync_playwright
 from config import BROWSER_PROFILE_DIR, STATE_FILE, BROWSER_ARGS, USER_AGENT
+
+
+@contextmanager
+def browser_session(headless: bool = True) -> Generator[Page, None, None]:
+    """
+    Context manager for browser sessions with automatic cleanup.
+
+    Usage:
+        with browser_session(headless=True) as page:
+            page.goto(url)
+            # ... do stuff ...
+
+    Raises:
+        Exception if not authenticated
+    """
+    # Lazy import to avoid circular dependency
+    from auth_manager import AuthManager
+
+    auth = AuthManager()
+    if not auth.is_authenticated():
+        raise Exception("Not authenticated. Run: python scripts/run.py auth_manager.py setup")
+
+    playwright = None
+    context = None
+    try:
+        playwright = sync_playwright().start()
+        context = BrowserFactory.launch_persistent_context(playwright, headless=headless)
+        page = context.new_page()
+        yield page
+    finally:
+        if context:
+            try:
+                context.close()
+            except Exception:
+                pass
+        if playwright:
+            try:
+                playwright.stop()
+            except Exception:
+                pass
 
 
 class BrowserFactory:
@@ -105,3 +146,56 @@ class StealthUtils:
         StealthUtils.random_delay(100, 300)
         element.click()
         StealthUtils.random_delay(100, 300)
+
+
+def find_and_click(page: Page, selectors: List[str], description: str, timeout: int = 10000) -> bool:
+    """
+    Try to find and click an element using multiple selectors.
+
+    Args:
+        page: Playwright page
+        selectors: List of CSS selectors to try
+        description: Human-readable description for logging
+        timeout: Timeout in milliseconds
+
+    Returns:
+        True if clicked successfully, False otherwise
+    """
+    for selector in selectors:
+        try:
+            element = page.wait_for_selector(selector, timeout=timeout, state="visible")
+            if element:
+                StealthUtils.random_delay(200, 500)
+                StealthUtils.realistic_click(page, selector)
+                print(f"  ✓ Clicked: {description}")
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def find_and_fill(page: Page, selectors: List[str], text: str, description: str, timeout: int = 10000) -> bool:
+    """
+    Try to find an input and fill it using multiple selectors.
+
+    Args:
+        page: Playwright page
+        selectors: List of CSS selectors to try
+        text: Text to type
+        description: Human-readable description for logging
+        timeout: Timeout in milliseconds
+
+    Returns:
+        True if filled successfully, False otherwise
+    """
+    for selector in selectors:
+        try:
+            element = page.wait_for_selector(selector, timeout=timeout, state="visible")
+            if element:
+                StealthUtils.random_delay(200, 400)
+                StealthUtils.human_type(page, selector, text)
+                print(f"  ✓ Filled: {description}")
+                return True
+        except Exception:
+            continue
+    return False

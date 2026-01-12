@@ -8,12 +8,9 @@ import sys
 import re
 from pathlib import Path
 
-from patchright.sync_api import sync_playwright
-
 sys.path.insert(0, str(Path(__file__).parent))
 
-from auth_manager import AuthManager
-from browser_utils import BrowserFactory, StealthUtils
+from browser_utils import browser_session, StealthUtils
 from list_notebooks import list_notebooks
 
 
@@ -46,10 +43,6 @@ def delete_notebook(notebook_url: str = None, notebook_id: str = None, notebook_
     Returns:
         Dict with status and details
     """
-    auth = AuthManager()
-
-    if not auth.is_authenticated():
-        return {"status": "error", "error": "Not authenticated. Run: python auth_manager.py setup"}
 
     # Resolve notebook
     resolved_id = None
@@ -84,183 +77,165 @@ def delete_notebook(notebook_url: str = None, notebook_id: str = None, notebook_
 
     print(f"🗑️  Deleting notebook: {resolved_name or resolved_id}")
 
-    playwright = None
-    context = None
-
     try:
-        playwright = sync_playwright().start()
-        context = BrowserFactory.launch_persistent_context(playwright, headless=headless)
+        with browser_session(headless=headless) as page:
+            print("  🌐 Opening NotebookLM...")
+            page.goto(NOTEBOOKLM_HOME, wait_until="domcontentloaded")
 
-        page = context.new_page()
-        print("  🌐 Opening NotebookLM...")
-        page.goto(NOTEBOOKLM_HOME, wait_until="domcontentloaded")
+            # Wait for page to load
+            page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=15000)
+            StealthUtils.random_delay(2000, 3000)
 
-        # Wait for page to load
-        page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=15000)
-        StealthUtils.random_delay(2000, 3000)
-
-        # Click on "All" tab to see user's notebooks
-        print("  🔍 Clicking 'All' tab...")
-        all_tab_selectors = [
-            'button:has-text("All")',
-            '[role="tab"]:has-text("All")',
-        ]
-        for selector in all_tab_selectors:
-            try:
-                tab = page.wait_for_selector(selector, timeout=5000, state="visible")
-                if tab:
-                    tab.click()
-                    StealthUtils.random_delay(1500, 2500)
-                    break
-            except Exception:
-                continue
-
-        # Find the notebook card by ID
-        print(f"  🔍 Looking for notebook: {resolved_id}")
-
-        # Look for the project-button element containing this notebook
-        notebook_card = None
-        try:
-            all_cards = page.query_selector_all('project-button')
-            for card in all_cards:
+            # Click on "All" tab to see user's notebooks
+            print("  🔍 Clicking 'All' tab...")
+            all_tab_selectors = [
+                'button:has-text("All")',
+                '[role="tab"]:has-text("All")',
+            ]
+            for selector in all_tab_selectors:
                 try:
-                    button = card.query_selector('button[aria-labelledby]')
-                    if button:
-                        aria = button.get_attribute('aria-labelledby') or ""
-                        if resolved_id in aria:
-                            notebook_card = card
-                            break
+                    tab = page.wait_for_selector(selector, timeout=5000, state="visible")
+                    if tab:
+                        tab.click()
+                        StealthUtils.random_delay(1500, 2500)
+                        break
                 except Exception:
                     continue
-        except Exception:
-            pass
 
-        if not notebook_card:
-            return {"status": "error", "error": f"Could not find notebook card for: {resolved_id}"}
+            # Find the notebook card by ID
+            print(f"  🔍 Looking for notebook: {resolved_id}")
 
-        print("  ✓ Found notebook card")
-
-        # Find and click the menu button (three dots) on the notebook card
-        print("  🔍 Opening menu...")
-        menu_button = None
-        menu_selectors = [
-            'button[aria-label="More options"]',
-            'button[aria-label*="menu" i]',
-            'button:has(mat-icon:has-text("more_vert"))',
-            'button:has(mat-icon:has-text("more_horiz"))',
-            '.menu-button',
-            '[data-test-id="notebook-menu"]',
-        ]
-
-        # First try within the notebook card
-        for selector in menu_selectors:
+            # Look for the project-button element containing this notebook
+            notebook_card = None
             try:
-                menu_button = notebook_card.query_selector(selector)
-                if menu_button:
-                    break
-            except Exception:
-                continue
-
-        # If not found in card, try hovering first to reveal menu
-        if not menu_button:
-            try:
-                notebook_card.hover()
-                StealthUtils.random_delay(500, 1000)
-                for selector in menu_selectors:
+                all_cards = page.query_selector_all('project-button')
+                for card in all_cards:
                     try:
-                        menu_button = notebook_card.query_selector(selector)
-                        if menu_button:
-                            break
+                        button = card.query_selector('button[aria-labelledby]')
+                        if button:
+                            aria = button.get_attribute('aria-labelledby') or ""
+                            if resolved_id in aria:
+                                notebook_card = card
+                                break
                     except Exception:
                         continue
             except Exception:
                 pass
 
-        if not menu_button:
-            return {"status": "error", "error": "Could not find menu button on notebook card"}
+            if not notebook_card:
+                return {"status": "error", "error": f"Could not find notebook card for: {resolved_id}"}
 
-        menu_button.click()
-        print("  ✓ Clicked menu button")
-        StealthUtils.random_delay(500, 1000)
+            print("  ✓ Found notebook card")
 
-        # Click "Delete" option in the menu
-        print("  🔍 Looking for 'Delete' option...")
-        delete_selectors = [
-            'button:has-text("Delete")',
-            '[role="menuitem"]:has-text("Delete")',
-            'mat-menu-item:has-text("Delete")',
-            '[data-test-id="delete-notebook"]',
-        ]
+            # Find and click the menu button (three dots) on the notebook card
+            print("  🔍 Opening menu...")
+            menu_button = None
+            menu_selectors = [
+                'button[aria-label="More options"]',
+                'button[aria-label*="menu" i]',
+                'button:has(mat-icon:has-text("more_vert"))',
+                'button:has(mat-icon:has-text("more_horiz"))',
+                '.menu-button',
+                '[data-test-id="notebook-menu"]',
+            ]
 
-        deleted = False
-        for selector in delete_selectors:
-            try:
-                delete_btn = page.wait_for_selector(selector, timeout=3000, state="visible")
-                if delete_btn:
-                    delete_btn.click()
-                    print("  ✓ Clicked 'Delete'")
-                    deleted = True
-                    break
-            except Exception:
-                continue
+            # First try within the notebook card
+            for selector in menu_selectors:
+                try:
+                    menu_button = notebook_card.query_selector(selector)
+                    if menu_button:
+                        break
+                except Exception:
+                    continue
 
-        if not deleted:
-            return {"status": "error", "error": "Could not find 'Delete' option in menu"}
+            # If not found in card, try hovering first to reveal menu
+            if not menu_button:
+                try:
+                    notebook_card.hover()
+                    StealthUtils.random_delay(500, 1000)
+                    for selector in menu_selectors:
+                        try:
+                            menu_button = notebook_card.query_selector(selector)
+                            if menu_button:
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
 
-        StealthUtils.random_delay(500, 1000)
+            if not menu_button:
+                return {"status": "error", "error": "Could not find menu button on notebook card"}
 
-        # Confirm deletion in dialog
-        print("  🔍 Confirming deletion...")
-        confirm_selectors = [
-            'button:has-text("Delete")',  # Confirm button in dialog
-            'button:has-text("Confirm")',
-            'button:has-text("Yes")',
-            '[data-test-id="confirm-delete"]',
-            'mat-dialog-actions button:has-text("Delete")',
-        ]
+            menu_button.click()
+            print("  ✓ Clicked menu button")
+            StealthUtils.random_delay(500, 1000)
 
-        confirmed = False
-        for selector in confirm_selectors:
-            try:
-                confirm_btn = page.wait_for_selector(selector, timeout=3000, state="visible")
-                if confirm_btn:
-                    confirm_btn.click()
-                    print("  ✓ Confirmed deletion")
-                    confirmed = True
-                    break
-            except Exception:
-                continue
+            # Click "Delete" option in the menu
+            print("  🔍 Looking for 'Delete' option...")
+            delete_selectors = [
+                'button:has-text("Delete")',
+                '[role="menuitem"]:has-text("Delete")',
+                'mat-menu-item:has-text("Delete")',
+                '[data-test-id="delete-notebook"]',
+            ]
 
-        if not confirmed:
-            # Maybe no confirmation needed
-            print("  ⚠️ No confirmation dialog found, deletion may have completed")
+            deleted = False
+            for selector in delete_selectors:
+                try:
+                    delete_btn = page.wait_for_selector(selector, timeout=3000, state="visible")
+                    if delete_btn:
+                        delete_btn.click()
+                        print("  ✓ Clicked 'Delete'")
+                        deleted = True
+                        break
+                except Exception:
+                    continue
 
-        StealthUtils.random_delay(2000, 3000)
+            if not deleted:
+                return {"status": "error", "error": "Could not find 'Delete' option in menu"}
 
-        print(f"  ✅ Deleted notebook: {resolved_name or resolved_id}")
-        return {
-            "status": "success",
-            "notebook_id": resolved_id,
-            "name": resolved_name
-        }
+            StealthUtils.random_delay(500, 1000)
+
+            # Confirm deletion in dialog
+            print("  🔍 Confirming deletion...")
+            confirm_selectors = [
+                'button:has-text("Delete")',  # Confirm button in dialog
+                'button:has-text("Confirm")',
+                'button:has-text("Yes")',
+                '[data-test-id="confirm-delete"]',
+                'mat-dialog-actions button:has-text("Delete")',
+            ]
+
+            confirmed = False
+            for selector in confirm_selectors:
+                try:
+                    confirm_btn = page.wait_for_selector(selector, timeout=3000, state="visible")
+                    if confirm_btn:
+                        confirm_btn.click()
+                        print("  ✓ Confirmed deletion")
+                        confirmed = True
+                        break
+                except Exception:
+                    continue
+
+            if not confirmed:
+                # Maybe no confirmation needed
+                print("  ⚠️ No confirmation dialog found, deletion may have completed")
+
+            StealthUtils.random_delay(2000, 3000)
+
+            print(f"  ✅ Deleted notebook: {resolved_name or resolved_id}")
+            return {
+                "status": "success",
+                "notebook_id": resolved_id,
+                "name": resolved_name
+            }
 
     except Exception as e:
         print(f"  ❌ Error: {e}")
         import traceback
         traceback.print_exc()
         return {"status": "error", "error": str(e)}
-
-    finally:
-        if context:
-            try:
-                context.close()
-            except Exception:
-                pass
-        if playwright:
-            try:
-                playwright.stop()
-            except Exception:
-                pass
 
 
 def main():
