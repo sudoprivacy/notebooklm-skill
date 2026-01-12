@@ -84,7 +84,7 @@ See **[SKILL.md](SKILL.md)** for complete documentation including:
 
 ## Credits
 
-Inspired by [NotebookLM MCP Server](https://github.com/PleasePrompto/notebooklm-mcp). This is a simplified skill-based implementation using Python and browser automation.
+Forked from [NotebookLM MCP Server](https://github.com/PleasePrompto/notebooklm-mcp) with deep customization: restructured as a skill (not MCP), added notebook listing/creation/deletion, source management (add/list/remove/download), exclude-sources for queries, and extensive workflow improvements.
 
 ---
 
