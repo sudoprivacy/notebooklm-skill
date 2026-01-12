@@ -80,7 +80,7 @@ def list_sources(
 
                         if (startIdx === -1) return [];
 
-                        const iconPrefixes = ['markdown', 'web', 'drive_pdf', 'youtube', 'video_youtube', 'check_box', 'check_box_outline_blank'];
+                        const iconPrefixes = ['markdown', 'web', 'drive_pdf', 'youtube', 'video_youtube'];
                         const sources = [];
 
                         for (let i = startIdx; i < lines.length; i++) {
@@ -93,18 +93,35 @@ def list_sources(
                                 break;
                             }
 
+                            // Skip icon prefixes but not checkbox states
                             if (iconPrefixes.indexOf(lowerLine) >= 0) continue;
                             if (lowerLine.indexOf('video_') === 0 || lowerLine.indexOf('drive_') === 0) continue;
+                            if (lowerLine === 'check_box' || lowerLine === 'check_box_outline_blank') continue;
 
                             if (line.length > 10) {
                                 let sourceType = 'Document';
+                                let enabled = true;  // Default to enabled
+
+                                // Look back to find checkbox and type
+                                for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
+                                    const prevLine = lines[j].trim().toLowerCase();
+                                    if (prevLine === 'check_box') {
+                                        enabled = true;
+                                        break;
+                                    } else if (prevLine === 'check_box_outline_blank') {
+                                        enabled = false;
+                                        break;
+                                    }
+                                }
+
+                                // Determine source type
                                 if (i > 0) {
                                     const prevLine = lines[i - 1].trim().toLowerCase();
                                     if (prevLine === 'youtube') sourceType = 'YouTube';
                                     else if (prevLine === 'web') sourceType = 'Website';
                                     else if (prevLine === 'drive_pdf') sourceType = 'PDF';
                                 }
-                                sources.push({ name: line, type: sourceType });
+                                sources.push({ name: line, type: sourceType, enabled: enabled });
                             }
                         }
 
@@ -208,11 +225,14 @@ def main():
             print(json.dumps(result, indent=2, ensure_ascii=False))
         else:
             if sources:
-                print(f"\n📄 Sources ({len(sources)}):\n")
+                enabled_count = sum(1 for s in sources if s.get('enabled', True))
+                disabled_count = len(sources) - enabled_count
+                print(f"\n📄 Sources ({len(sources)} total, {enabled_count} on, {disabled_count} off):\n")
                 for i, src in enumerate(sources, 1):
-                    print(f"  {i}. {src.get('name', 'Unnamed')}")
+                    status = "✅" if src.get('enabled', True) else "⬜"
+                    print(f"  {i}. {status} {src.get('name', 'Unnamed')}")
                     if src.get('type') and src['type'] != 'Unknown':
-                        print(f"     Type: {src['type']}")
+                        print(f"        Type: {src['type']}")
                     print()
             else:
                 print("\n📄 No sources found in this notebook.")
