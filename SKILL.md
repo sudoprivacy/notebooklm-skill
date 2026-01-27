@@ -1,6 +1,6 @@
 ---
 name: notebooklm
-description: "Query Google NotebookLM notebooks, list notebooks, and add sources via browser automation. Use when user: (1) wants to query notebooks for source-grounded answers, (2) wants to list/see their NotebookLM notebooks, (3) wants to add website/YouTube URLs as sources, (4) wants to upload files (PDF, TXT, etc.) as sources, (5) wants to list sources in a notebook, (6) wants to toggle/deactivate sources, (7) wants to remove/delete sources, (8) wants to download/extract source content, (9) mentions NotebookLM or shares notebook URLs, (10) asks to check/search their documentation"
+description: "Query Google NotebookLM notebooks, generate Studio outputs (audio podcasts, slides, infographics), and manage sources via browser automation. Use when user wants to: query notebooks, generate presentations/podcasts/infographics, list notebooks, add/remove sources, or mentions NotebookLM."
 ---
 
 # NotebookLM Research Assistant Skill
@@ -11,6 +11,7 @@ Interact with Google NotebookLM to query documentation with Gemini's source-grou
 
 Trigger when user:
 - Wants to query notebooks for answers
+- Wants to generate Studio outputs (audio podcasts, slides, infographics, mind maps, etc.)
 - Wants to list/see their NotebookLM notebooks
 - Wants to add website/YouTube URLs as sources to a notebook
 - Wants to upload files (PDF, TXT, MD, DOCX, etc.) as sources
@@ -19,7 +20,7 @@ Trigger when user:
 - Wants to remove/delete sources from a notebook
 - Wants to download/extract source content from a notebook
 - Mentions NotebookLM or shares notebook URL
-- Uses phrases like "ask my NotebookLM", "list my notebooks", "add this URL to notebook", "upload this file", "query my docs", "list sources", "exclude source", "remove source", "download source"
+- Uses phrases like "generate slides", "create audio overview", "make infographic", "ask my NotebookLM", "list my notebooks"
 
 ## Critical: Always Use run.py Wrapper
 
@@ -117,7 +118,25 @@ python scripts/run.py ask_question.py --question "..." --show-browser
 
 **Auto-remember feature:** After a successful query, the notebook is automatically saved. Subsequent queries without `--notebook-name/--notebook-id/--notebook-url` will use the last notebook.
 
-### Step 5: Add Sources (URLs and Files)
+### Step 6: Generate Studio Outputs
+
+```bash
+# Generate slides (presentation)
+python scripts/run.py generate_outputs.py slides --notebook-name "my docs"
+
+# Generate infographic
+python scripts/run.py generate_outputs.py infographic --notebook-name "my docs"
+
+# Generate audio overview (podcast)
+python scripts/run.py generate_outputs.py audio --notebook-name "my docs"
+
+# Generate all Studio outputs
+python scripts/run.py generate_outputs.py all --notebook-name "my docs"
+```
+
+**Available Studio outputs:** audio, video, slides, infographic, mind-map, reports, flashcards, quiz, data-table
+
+### Step 7: Add Sources (URLs and Files)
 
 ```bash
 # Add website URL as source (by notebook name)
@@ -211,6 +230,16 @@ python scripts/run.py add_source.py --url "..." [--notebook-name NAME] [--notebo
 
 # Upload local file
 python scripts/run.py add_source.py --file "..." [--notebook-name NAME] [--notebook-id ID] [--notebook-url URL] [--show-browser]
+```
+
+### Generate Studio Outputs (`generate_outputs.py`)
+```bash
+# Generate specific output type
+python scripts/run.py generate_outputs.py [TYPE] --notebook-name "my docs"
+
+# Types: audio, video, slides, infographic, mind-map, reports, flashcards, quiz, data-table, all
+python scripts/run.py generate_outputs.py slides --notebook-name "my docs"
+python scripts/run.py generate_outputs.py all --notebook-id UUID --show-browser
 ```
 
 ### List Sources (`list_sources.py`)
