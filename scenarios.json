@@ -1,0 +1,176 @@
+{
+  "config": {
+    "imports": [
+      "import sys",
+      "sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))",
+      "from create_notebook import create_notebook",
+      "from delete_notebook import delete_notebook",
+      "from add_source import add_url_source, add_file_source",
+      "from ask_question import ask_notebooklm",
+      "from list_notebooks import list_notebooks",
+      "from list_sources import list_sources",
+      "from remove_source import remove_source",
+      "from download_source import download_source"
+    ],
+    "setup": [],
+    "call_style": "function",
+    "extract_style": "dict",
+    "default_assert_status": true,
+    "required_env_vars": [],
+    "smoke_test_assertions": [
+      "create_notebook is not None",
+      "delete_notebook is not None",
+      "add_url_source is not None",
+      "ask_notebooklm is not None",
+      "list_notebooks is not None",
+      "list_sources is not None",
+      "remove_source is not None",
+      "download_source is not None"
+    ]
+  },
+  "scenarios": [
+    {
+      "name": "research_with_url_source",
+      "title": "Create notebook, add URL source, query, and cleanup",
+      "workflow": "Create Notebook → Add URL Source → Ask Question → Delete Notebook",
+      "user_problem": "Researcher creates a temporary knowledge base from a web article, queries it for answers, then cleans up",
+      "skip_reason": "Requires authenticated NotebookLM session",
+      "fixtures": [],
+      "steps": [
+        {
+          "function": "create_notebook",
+          "params": {"name": "Integration Test - URL Research"},
+          "var_name": "nb",
+          "extract": "notebook_url",
+          "extract_var": "notebook_url",
+          "description": "create_notebook creates a fresh test notebook, returns dict with notebook_url and notebook_id",
+          "assertions": ["nb['notebook_id'] is not None"]
+        },
+        {
+          "function": "add_url_source",
+          "params": {"notebook_url": {"var": "notebook_url"}, "source_url": "https://en.wikipedia.org/wiki/Artificial_intelligence"},
+          "var_name": "add_result",
+          "description": "add_url_source adds a Wikipedia article as source material",
+          "assertions": []
+        },
+        {
+          "function": "ask_notebooklm",
+          "params": {"question": "What is artificial intelligence? Give a brief definition.", "notebook_url": {"var": "notebook_url"}},
+          "var_name": "answer",
+          "assert_status": false,
+          "description": "ask_notebooklm queries the notebook, returns answer string from the source",
+          "assertions": ["isinstance(answer, str)", "len(answer) > 10"]
+        },
+        {
+          "function": "delete_notebook",
+          "params": {"notebook_id": {"var": "nb['notebook_id']"}, "confirm": true},
+          "var_name": "cleanup",
+          "cleanup": true,
+          "description": "delete_notebook removes the test notebook (test data isolation)",
+          "assertions": []
+        }
+      ]
+    },
+    {
+      "name": "file_source_with_verification",
+      "title": "Upload file, verify in sources list, query, and cleanup",
+      "workflow": "Create Notebook → Add File Source → List Sources (verify) → Ask Question → Delete Notebook",
+      "user_problem": "User uploads a document to NotebookLM, verifies it appears in the sources, then queries for information from it",
+      "skip_reason": "Requires authenticated NotebookLM session",
+      "fixtures": ["tmp_path"],
+      "steps": [
+        {
+          "function": "create_notebook",
+          "params": {"name": "Integration Test - File Upload"},
+          "var_name": "nb",
+          "extract": "notebook_url",
+          "extract_var": "notebook_url",
+          "description": "create_notebook creates a fresh test notebook",
+          "assertions": ["nb['notebook_id'] is not None"]
+        },
+        {
+          "function": "add_file_source",
+          "params": {"notebook_url": {"var": "notebook_url"}, "file_path": {"var": "test_file"}},
+          "var_name": "add_result",
+          "pre_code": [
+            "test_file = str(tmp_path / 'test_notes.txt')",
+            "Path(test_file).write_text('The Python programming language was created by Guido van Rossum in 1991. It emphasizes code readability and simplicity.')"
+          ],
+          "description": "Create test file, then add_file_source uploads it as a notebook source",
+          "assertions": []
+        },
+        {
+          "function": "list_sources",
+          "params": {"notebook_url": {"var": "notebook_url"}},
+          "var_name": "sources_result",
+          "description": "list_sources verifies the uploaded file appears in the notebook's sources",
+          "assertions": []
+        },
+        {
+          "function": "ask_notebooklm",
+          "params": {"question": "Who created Python and when?", "notebook_url": {"var": "notebook_url"}},
+          "var_name": "answer",
+          "assert_status": false,
+          "description": "ask_notebooklm queries the uploaded content to verify it's searchable",
+          "assertions": ["isinstance(answer, str)", "len(answer) > 10"]
+        },
+        {
+          "function": "delete_notebook",
+          "params": {"notebook_id": {"var": "nb['notebook_id']"}, "confirm": true},
+          "var_name": "cleanup",
+          "cleanup": true,
+          "description": "delete_notebook removes the test notebook (test data isolation)",
+          "assertions": []
+        }
+      ]
+    },
+    {
+      "name": "source_management_lifecycle",
+      "title": "Add source, download content, remove source, cleanup",
+      "workflow": "Create Notebook → Add URL Source → Download Source → Remove Source → Delete Notebook",
+      "user_problem": "User manages notebook sources: adds a URL, downloads its extracted content for offline use, then removes the source and cleans up",
+      "skip_reason": "Requires authenticated NotebookLM session",
+      "fixtures": [],
+      "steps": [
+        {
+          "function": "create_notebook",
+          "params": {"name": "Integration Test - Source Mgmt"},
+          "var_name": "nb",
+          "extract": "notebook_url",
+          "extract_var": "notebook_url",
+          "description": "create_notebook creates a fresh test notebook",
+          "assertions": ["nb['notebook_id'] is not None"]
+        },
+        {
+          "function": "add_url_source",
+          "params": {"notebook_url": {"var": "notebook_url"}, "source_url": "https://en.wikipedia.org/wiki/Python_(programming_language)"},
+          "var_name": "add_result",
+          "description": "add_url_source adds a Wikipedia article about Python as a source",
+          "assertions": []
+        },
+        {
+          "function": "download_source",
+          "params": {"source_name": "Python", "notebook_url": {"var": "notebook_url"}},
+          "var_name": "download_result",
+          "description": "download_source extracts the source content for offline use",
+          "assertions": ["download_result.get('content_length', 0) > 0"]
+        },
+        {
+          "function": "remove_source",
+          "params": {"source_name": "Python", "notebook_url": {"var": "notebook_url"}},
+          "var_name": "remove_result",
+          "description": "remove_source deletes the source from the notebook",
+          "assertions": []
+        },
+        {
+          "function": "delete_notebook",
+          "params": {"notebook_id": {"var": "nb['notebook_id']"}, "confirm": true},
+          "var_name": "cleanup",
+          "cleanup": true,
+          "description": "delete_notebook removes the test notebook (test data isolation)",
+          "assertions": []
+        }
+      ]
+    }
+  ]
+}
