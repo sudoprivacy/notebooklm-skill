@@ -66,6 +66,22 @@ SUBMIT_BUTTON_SELECTORS = [
 ]
 
 
+def _count_sources(page) -> int:
+    """Count sources using mat-checkbox elements (same approach as list_sources.py)."""
+    return page.evaluate('''() => {
+        const checkboxes = document.querySelectorAll('mat-checkbox');
+        let count = 0;
+        for (const cb of checkboxes) {
+            const row = cb.closest('[class*="source"]') || cb.parentElement?.parentElement || cb.parentElement;
+            if (!row) continue;
+            const text = (row.innerText || '').toLowerCase();
+            if (text.indexOf('select all') >= 0) continue;
+            count++;
+        }
+        return count;
+    }''')
+
+
 def is_youtube_url(url: str) -> bool:
     """Check if URL is a YouTube video"""
     youtube_patterns = [
@@ -142,6 +158,10 @@ def add_url_source(notebook_url: str, source_url: str, headless: bool = True) ->
 
             StealthUtils.random_delay(300, 600)
 
+            # Count sources before submitting
+            count_before = _count_sources(page)
+            print(f"  📊 Sources before: {count_before}")
+
             # Step 4: Submit
             print("  📤 Submitting...")
             if not find_and_click(page, SUBMIT_BUTTON_SELECTORS, "Submit button"):
@@ -149,12 +169,14 @@ def add_url_source(notebook_url: str, source_url: str, headless: bool = True) ->
                 page.keyboard.press("Enter")
                 print("  ✓ Pressed Enter to submit")
 
-            # Step 5: Wait for processing
+            # Step 5: Wait for source to be indexed
             print("  ⏳ Waiting for source to be added...")
             StealthUtils.random_delay(2000, 3000)
 
-            # Check for success indicators or wait for the source to appear
-            max_wait = 60  # 60 seconds max wait
+            # Click Sources tab to ensure we see the updated list
+            find_and_click(page, SOURCES_TAB_SELECTORS, "Sources tab", timeout=5000)
+
+            max_wait = 120  # URL sources need server-side processing
             start_time = time.time()
 
             while time.time() - start_time < max_wait:
@@ -169,32 +191,18 @@ def add_url_source(notebook_url: str, source_url: str, headless: bool = True) ->
                     if "Error adding source" in str(e):
                         raise
 
-                # Check for loading indicators
-                try:
-                    loading = page.query_selector('.loading, .spinner, [aria-busy="true"]')
-                    if loading and loading.is_visible():
-                        time.sleep(1)
-                        continue
-                except Exception:
-                    pass
+                # Check if source count increased
+                count_now = _count_sources(page)
+                if count_now > count_before:
+                    print(f"  ✅ Source added successfully! (sources: {count_before} → {count_now})")
+                    return {
+                        "status": "success",
+                        "source_url": source_url,
+                        "source_type": source_type,
+                        "notebook_url": notebook_url
+                    }
 
-                # Check if source was added (look for the URL in sources list)
-                try:
-                    # Look for the source in the list
-                    sources = page.query_selector_all('.source-item, [data-source-url]')
-                    for source in sources:
-                        if source_url in (source.get_attribute('data-source-url') or source.inner_text()):
-                            print("  ✅ Source added successfully!")
-                            return {
-                                "status": "success",
-                                "source_url": source_url,
-                                "source_type": source_type,
-                                "notebook_url": notebook_url
-                            }
-                except Exception:
-                    pass
-
-                time.sleep(2)
+                time.sleep(3)
 
             # If we get here, assume it worked (no error found)
             print("  ✅ Source submission completed (verification timeout)")
@@ -268,6 +276,10 @@ def add_file_source(notebook_url: str, file_path: str, headless: bool = True) ->
             upload_clicked = find_and_click(page, upload_selectors, "Upload files", timeout=5000)
             StealthUtils.random_delay(1000, 1500)
 
+            # Count sources before uploading
+            count_before = _count_sources(page)
+            print(f"  📊 Sources before: {count_before}")
+
             # Step 3: Find file input and upload
             print("  📤 Uploading file...")
 
@@ -309,7 +321,9 @@ def add_file_source(notebook_url: str, file_path: str, headless: bool = True) ->
             print("  ⏳ Waiting for upload to complete...")
             StealthUtils.random_delay(2000, 3000)
 
-            # Check for processing/upload progress
+            # Click Sources tab to ensure we see the updated list
+            find_and_click(page, SOURCES_TAB_SELECTORS, "Sources tab", timeout=5000)
+
             max_wait = 120  # 2 minutes max for file upload
             start_time = time.time()
 
@@ -325,40 +339,19 @@ def add_file_source(notebook_url: str, file_path: str, headless: bool = True) ->
                     if "Upload error" in str(e):
                         raise
 
-                # Check for loading/progress indicators
-                try:
-                    loading = page.query_selector('.loading, .spinner, [aria-busy="true"], .progress')
-                    if loading and loading.is_visible():
-                        time.sleep(2)
-                        continue
-                except Exception:
-                    pass
+                # Check if source count increased
+                count_now = _count_sources(page)
+                if count_now > count_before:
+                    print(f"  ✅ File uploaded successfully! (sources: {count_before} → {count_now})")
+                    return {
+                        "status": "success",
+                        "file_path": str(file_path),
+                        "file_name": file_name,
+                        "source_type": "File",
+                        "notebook_url": notebook_url
+                    }
 
-                # Check if upload dialog closed (success indicator)
-                try:
-                    # If the upload dialog is gone and we're back to the notebook view
-                    sources_panel = page.query_selector('.sources-panel, [data-panel="sources"]')
-                    if sources_panel:
-                        # Look for the file in the sources list
-                        source_items = page.query_selector_all('.source-item, .source-card, [class*="source"]')
-                        for item in source_items:
-                            try:
-                                item_text = item.inner_text()
-                                if file_name.split('.')[0].lower() in item_text.lower():
-                                    print("  ✅ File uploaded successfully!")
-                                    return {
-                                        "status": "success",
-                                        "file_path": str(file_path),
-                                        "file_name": file_name,
-                                        "source_type": "File",
-                                        "notebook_url": notebook_url
-                                    }
-                            except Exception:
-                                continue
-                except Exception:
-                    pass
-
-                time.sleep(2)
+                time.sleep(3)
 
             # Assume success if no error
             print("  ✅ Upload completed (verification timeout)")

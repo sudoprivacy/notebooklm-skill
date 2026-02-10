@@ -69,27 +69,34 @@ def remove_source(
                 except Exception:
                     continue
 
-            # Find the source by name in the sources list
+            # Find the source by name in the sources list (with retry for slow DOM rendering)
             print(f"  🔍 Looking for source: {source_name}...")
 
-            # Find the source row and its more options menu (without clicking the source itself)
-            found_source = page.evaluate('''(sourceName) => {
-                const sourceNameLower = sourceName.toLowerCase();
-                const bodyText = document.body.innerText;
-                const lines = bodyText.split(String.fromCharCode(10));
+            found_source = None
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                # Find the source row and its more options menu (without clicking the source itself)
+                found_source = page.evaluate('''(sourceName) => {
+                    const sourceNameLower = sourceName.toLowerCase();
+                    const bodyText = document.body.innerText;
+                    const lines = bodyText.split(String.fromCharCode(10));
 
-                // Find the source in visible text
-                for (const line of lines) {
-                    if (line.toLowerCase().indexOf(sourceNameLower) >= 0 &&
-                        line.toLowerCase().indexOf('select all') === -1 &&
-                        line.length > 10) {
-                        return { found: true, name: line.trim() };
+                    // Find the source in visible text
+                    for (const line of lines) {
+                        if (line.toLowerCase().indexOf(sourceNameLower) >= 0 &&
+                            line.toLowerCase().indexOf('select all') === -1 &&
+                            line.length > 10) {
+                            return { found: true, name: line.trim() };
+                        }
                     }
-                }
-                return { found: false };
-            }''', source_name)
+                    return { found: false };
+                }''', source_name)
 
-            if not found_source.get("found"):
+                if found_source and found_source.get("found"):
+                    break
+                time.sleep(2)
+
+            if not found_source or not found_source.get("found"):
                 print(f"  ❌ Source not found: {source_name}")
                 return {"status": "error", "error": f"Source not found: {source_name}"}
 

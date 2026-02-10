@@ -18,8 +18,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from notebook_config import get_last_notebook, set_last_notebook
-from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS, SOURCES_TAB_SELECTORS
-from browser_utils import browser_session, StealthUtils
+from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS, SOURCES_TAB_SELECTORS, CHAT_TAB_SELECTORS
+from browser_utils import browser_session, StealthUtils, find_and_click
 from list_notebooks import list_notebooks
 
 
@@ -144,6 +144,11 @@ def ask_notebooklm(question: str, notebook_url: str, headless: bool = True, excl
 
             # Wait for NotebookLM
             page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
+            StealthUtils.random_delay(2000, 3000)
+
+            # Click Chat tab (NotebookLM may load on Sources tab)
+            if not find_and_click(page, CHAT_TAB_SELECTORS, "Chat tab", timeout=10000):
+                print("  ⚠️ Could not find Chat tab, continuing anyway...")
             StealthUtils.random_delay(1000, 1500)
 
             # Deactivate excluded sources before asking

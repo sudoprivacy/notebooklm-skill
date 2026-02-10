@@ -7,6 +7,7 @@ import argparse
 import json
 import sys
 import re
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -48,6 +49,26 @@ def list_sources(
             print("  🔍 Clicking Sources tab...")
             find_and_click(page, SOURCES_TAB_SELECTORS, "Sources tab", timeout=5000)
             StealthUtils.random_delay(1500, 2500)
+
+            # Poll for at least 1 mat-checkbox to render (sources may be slow to load)
+            print("  ⏳ Waiting for sources to render...")
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                count = page.evaluate('''() => {
+                    const checkboxes = document.querySelectorAll('mat-checkbox');
+                    let sourceCount = 0;
+                    for (const cb of checkboxes) {
+                        const row = cb.closest('[class*="source"]') || cb.parentElement?.parentElement;
+                        if (!row) continue;
+                        const rowText = (row.innerText || '').toLowerCase();
+                        if (rowText.indexOf('select all') < 0) sourceCount++;
+                    }
+                    return sourceCount;
+                }''')
+                if count > 0:
+                    print(f"  ✓ Sources rendered ({count} found)")
+                    break
+                time.sleep(2)
 
             print("  🔍 Looking for sources...")
 

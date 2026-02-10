@@ -26,6 +26,12 @@ RESPONSE_SELECTORS = [
     "[data-message-author='assistant']",
 ]
 
+# Chat Tab Selectors
+CHAT_TAB_SELECTORS = [
+    'button:has-text("Chat")',
+    '[role="tab"]:has-text("Chat")',
+]
+
 # Sources Tab Selectors
 SOURCES_TAB_SELECTORS = [
     'button:has-text("Sources")',

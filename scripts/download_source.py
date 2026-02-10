@@ -7,6 +7,7 @@ import argparse
 import json
 import sys
 import re
+import time
 from pathlib import Path
 from datetime import datetime
 
@@ -194,28 +195,31 @@ def download_source(
                 except Exception:
                     continue
 
-            # Find and click on the source to open it
+            # Find and click on the source to open it (with retry for slow DOM rendering)
             print(f"  🔍 Looking for source: {source_name}...")
 
-            # First scroll to make sure source is visible
-            page.evaluate('''(sourceName) => {
-                const sourceNameLower = sourceName.toLowerCase();
-                const checkboxes = document.querySelectorAll('mat-checkbox');
-                for (const cb of checkboxes) {
-                    const row = cb.closest('[class*="source"]') || cb.parentElement?.parentElement;
-                    if (!row) continue;
-                    const rowText = row.innerText || '';
-                    if (rowText.toLowerCase().indexOf(sourceNameLower) >= 0 &&
-                        rowText.toLowerCase().indexOf('select all') < 0) {
-                        row.scrollIntoView({ block: 'center' });
-                        return true;
+            source_info = None
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                # First scroll to make sure source is visible
+                page.evaluate('''(sourceName) => {
+                    const sourceNameLower = sourceName.toLowerCase();
+                    const checkboxes = document.querySelectorAll('mat-checkbox');
+                    for (const cb of checkboxes) {
+                        const row = cb.closest('[class*="source"]') || cb.parentElement?.parentElement;
+                        if (!row) continue;
+                        const rowText = row.innerText || '';
+                        if (rowText.toLowerCase().indexOf(sourceNameLower) >= 0 &&
+                            rowText.toLowerCase().indexOf('select all') < 0) {
+                            row.scrollIntoView({ block: 'center' });
+                            return true;
+                        }
                     }
-                }
-                return false;
-            }''', source_name)
-            StealthUtils.random_delay(500, 800)
+                    return false;
+                }''', source_name)
+                StealthUtils.random_delay(500, 800)
 
-            source_info = page.evaluate('''(sourceName) => {
+                source_info = page.evaluate('''(sourceName) => {
                 const sourceNameLower = sourceName.toLowerCase();
 
                 // Find source by looking at checkbox rows and getting the clickable name element
@@ -274,7 +278,11 @@ def download_source(
                 return { found: false };
             }''', source_name)
 
-            if not source_info.get('found'):
+                if source_info and source_info.get('found'):
+                    break
+                time.sleep(2)
+
+            if not source_info or not source_info.get('found'):
                 print(f"  ❌ Source not found: {source_name}")
                 return {"status": "error", "error": f"Source not found: {source_name}"}
 
